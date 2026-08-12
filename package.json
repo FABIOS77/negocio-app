@@ -23,7 +23,8 @@
     "db:migrate:undo:all": "sequelize-cli db:migrate:undo:all",
     "db:migrate:status": "sequelize-cli db:migrate:status",
     "db:seed": "sequelize-cli db:seed:all",
-    "db:seed:undo": "sequelize-cli db:seed:undo:all"
+    "db:seed:undo": "sequelize-cli db:seed:undo:all",
+    "test:smoke": "tsx scripts/smoke-test.ts"
   },
   "keywords": [],
   "author": "",

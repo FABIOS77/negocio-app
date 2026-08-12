@@ -1,121 +1,105 @@
-# API Reference
+# API Reference — Negocio Katering Backend (V1 Final)
 
-Base URL: /api/v1
+Base URL: `/api/v1`
 
-> Sprint 2 implementado: /auth, /users/me, /dishes, /daily-menus (incluyendo /draw).
+Todas las respuestas exitosas y de error siguen el contrato estandarizado:
 
-## Autenticación
+**Respuesta Exitosa**:
+```json
+{
+  "success": true,
+  "data": {}
+}
+```
 
-Todos los endpoints (salvo /auth/*) requieren: Authorization: Bearer <access_token>
+**Respuesta de Error**:
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Mensaje legible"
+  }
+}
+```
 
-## /auth
+---
 
-### POST /auth/login
-Body: { email, password }
-Response 200: { accessToken, refreshToken, user }
-Errores: 400, 401, 403
+## 🏥 Sistema & Salud (Públicos)
 
-### POST /auth/refresh
-Body: { refreshToken }
-Response 200: { accessToken }
-Errores: 401
+- `GET /health`: Estado básico del servidor HTTP Express.
+- `GET /health/db`: Conectividad activa con PostgreSQL (200 OK | 503 Service Unavailable).
 
-### POST /auth/logout
-Body: { refreshToken }
-Response 204
-Errores: 401
+---
 
-## /users
+## 🔑 Autenticación (`/auth`) (Público, Rate Limited)
 
-### GET /users/me — Response 200: UserDTO
-### PATCH /users/me — Body: { name?, password? } — Response 200: UserDTO
+- `POST /auth/login`: Autenticar usuario -> `{ accessToken, refreshToken, user }`
+- `POST /auth/refresh`: Renovar access token -> `{ accessToken }`
+- `POST /auth/logout`: Revocar refresh token -> 204 No Content
 
-## /dishes
+---
 
-### GET /dishes — Query: ?active&page&limit — Response 200: { data, pagination }
-### POST /dishes — Body: { name, description?, price, image_url?, active? } — 201
-### GET /dishes/:id — 200 | 404
-### PUT /dishes/:id — Body campos opcionales — 200 | 404
-### DELETE /dishes/:id — 204 soft-delete | 404 | 409
+## 👤 Usuarios (`/users`) (Requiere JWT)
 
-## /daily-menus
+- `GET /users/me`: Perfil de usuario autenticado.
+- `PATCH /users/me`: Actualizar nombre o contraseña.
 
-### GET /daily-menus — Query: ?date — Response 200: DailyMenuDTO[]
-### GET /daily-menus/today — Response 200: DailyMenuDTO | null
-### POST /daily-menus — Body: { menu_date, dish_ids[] } — 201 | 409 | 422
-### GET /daily-menus/:id — 200 | 404
-### PUT /daily-menus/:id — Body: { dish_ids?, active? } — 200
+---
 
-## /orders
+## 🍲 Platos (`/dishes`) (Requiere JWT)
 
-No existe DELETE. Cancelar via PATCH status.
+- `GET /dishes?active=true&page=1&limit=20`: Listado paginado de platos.
+- `POST /dishes`: Crear plato -> `{ id?, name, description?, price, active? }`
+- `GET /dishes/:id`: Obtener plato por ID.
+- `PUT /dishes/:id`: Actualizar plato.
+- `DELETE /dishes/:id`: Soft-delete de plato.
 
-### GET /orders — Query: ?status&date&page&limit — Response 200: { data, pagination }
-### POST /orders
-Body: { id?, customer_name, location_text?, payment_method, ordered_at?, items[] }
-items[]: { dish_id, quantity }
-Response 201: OrderDTO (order_number y total calculados en backend)
-Errores: 400, 409, 422
+---
 
-### GET /orders/:id — 200 | 404
-### PATCH /orders/:id/status — Body: { status: DELIVERED|CANCELLED } — 200 | 400 | 404
+## 📅 Menús Diarios (`/daily-menus`) (Requiere JWT)
 
-## /expenses
+- `GET /daily-menus?date=YYYY-MM-DD`: Listar menús por fecha.
+- `GET /daily-menus/today`: Menú activo de hoy.
+- `POST /daily-menus`: Crear/Reemplazar menú -> `{ id?, menu_date, dish_ids[] }`
+- `GET /daily-menus/:id`: Detalle de menú diario.
+- `PUT /daily-menus/:id`: Actualizar platos del menú diario.
 
-### GET /expenses — Query: ?category_id&date_from&date_to&page&limit — 200
-### POST /expenses — Body: { id?, description, amount, category_id, payment_method, expense_date } — 201
-### GET /expenses/:id — 200 | 404
-### PUT /expenses/:id — Body campos opcionales — 200
-### DELETE /expenses/:id — 204 soft-delete
-### GET /expenses/categories — 200: ExpenseCategoryDTO[]
-### POST /expenses/categories — Body: { name } — 201
+---
 
-## /reports
+## 📦 Pedidos (`/orders`) (Requiere JWT)
 
-Reglas de status:
-- Ventas y produccion: incluye PENDING y DELIVERED, excluye CANCELLED
-- Gastos: todos los no eliminados
-- Resultado: ventas - gastos
+- `GET /orders?status=PENDING&date=YYYY-MM-DD&page=1&limit=20`: Listar pedidos.
+- `POST /orders`: Crear pedido idempotente -> `{ id?, customer_name, payment_method, items[] }`
+- `GET /orders/:id`: Detalle del pedido.
+- `PATCH /orders/:id/status`: Cambiar estado (`PENDING` -> `DELIVERED` | `CANCELLED`).
 
-### GET /reports/sales — Query: ?period&date_from&date_to
-Response: { total_sales, order_count, currency, by_payment_method, period }
+---
 
-### GET /reports/expenses — Query: ?date_from&date_to
-Response: { total_expenses, currency, by_category[] }
+## 💰 Gastos (`/expenses`) (Requiere JWT)
 
-### GET /reports/result — Query: ?date_from&date_to
-Response: { total_sales, total_expenses, result, currency }
+- `GET /expenses?category_id=UUID&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&page=1&limit=20`
+- `POST /expenses`: Registrar gasto -> `{ id?, description, amount, category_id, payment_method, expense_date }`
+- `GET /expenses/:id`: Detalle de gasto.
+- `PUT /expenses/:id`: Actualizar gasto.
+- `DELETE /expenses/:id`: Soft-delete de gasto.
+- `GET /expenses/categories`: Listar categorías activas.
+- `POST /expenses/categories`: Crear categoría de gastos.
+- `PATCH /expenses/categories/:id`: Actualizar categoría.
 
-### GET /reports/top-dishes — Query: ?date_from&date_to&limit
-Response: [{ dish_id, dish_name, total_quantity, total_revenue }]
+---
 
-### GET /reports/production — Query: ?date
-Response: [{ dish_id, dish_name, total_quantity }]
-Fecha interpretada en America/La_Paz.
+## 📊 Reportes (`/reports`) (Requiere JWT)
 
-### GET /reports/export — Query: ?date_from&date_to&sections
-Response: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+- `GET /reports/production?date=YYYY-MM-DD`: Resumen de producción consolidado.
+- `GET /reports/sales?period=day|week|month|custom`: Resumen de ventas.
+- `GET /reports/expenses?period=day|week|month|custom`: Resumen de gastos por categoría y método de pago.
+- `GET /reports/result?period=day|week|month|custom`: Resultado financiero neto (Ventas - Gastos).
+- `GET /reports/top-dishes?period=day|week|month|custom`: Ranking de platos más vendidos.
 
-## /sync
+---
 
-### POST /sync/push
-Body: { operations[]: { operation_id, entity_type, entity_id, operation, payload, entity_version, client_timestamp } }
-Response 200: { processed, failed, results[]: { operation_id, status, error? } }
-Status por operacion: PROCESSED | FAILED | CONFLICT
+## 🔄 Sincronización Offline (`/sync`) (Requiere JWT, Rate Limited)
 
-### GET /sync/pull
-Query: ?cursor&entity_types&limit
-Response 200: { changes[], next_cursor, has_more }
-changes[]: { cursor, entity_type, entity_id, operation, snapshot, changed_at }
-
-## Errores comunes
-
-| Código | Significado |
-|---|---|
-| 400 | Validación Zod fallida |
-| 401 | Token inválido o ausente |
-| 403 | Usuario inactivo |
-| 404 | Recurso no encontrado |
-| 409 | Conflicto (duplicado, version desactualizada) |
-| 422 | Regla de negocio violada (plato inactivo, etc.) |
-| 500 | Error interno (sin detalles en producción) |
+- `POST /sync/push`: Enviar lote de operaciones offline del cliente (Atómico, Idempotente, Concurrencia Optimista).
+- `GET /sync/pull?cursor=N&limit=100`: Obtener cambios incrementales registrados en el servidor desde el cursor `server_change_id`.

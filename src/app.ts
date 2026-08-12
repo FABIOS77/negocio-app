@@ -24,6 +24,8 @@ import expensesRoutes from './modules/expenses/expenses.routes';
 import reportsRoutes from './modules/reports/reports.routes';
 import syncRoutes from './modules/sync/sync.routes';
 
+import { sequelize } from './database/sequelize';
+
 export const app = express();
 
 // ─── Seguridad ────────────────────────────────────────────────────────────────
@@ -53,11 +55,25 @@ app.use(express.urlencoded({ extended: true }));
 
 /**
  * GET /health
- * Verificación básica de que el servidor está activo.
- * No expone información sensible.
+ * Verificación básica de que el servidor HTTP está activo.
  */
 app.get('/health', (_req, res) => {
   sendSuccess(res, { status: 'ok' });
+});
+
+/**
+ * GET /health/db
+ * Verificación de conectividad con la base de datos PostgreSQL.
+ * Retorna 200 con status 'ok' o 503 con status 'unavailable'.
+ * No expone credenciales ni detalles internos.
+ */
+app.get('/health/db', async (_req, res) => {
+  try {
+    await sequelize.authenticate();
+    sendSuccess(res, { status: 'ok', database: 'connected' });
+  } catch {
+    sendError(res, 'SERVICE_UNAVAILABLE', 'Database connection unavailable', 503);
+  }
 });
 
 // ─── API v1 ───────────────────────────────────────────────────────────────────

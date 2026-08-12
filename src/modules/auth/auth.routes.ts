@@ -16,7 +16,7 @@ const router = Router();
 router.post('/login', authRateLimit, validate({ body: loginSchema }), authController.login);
 
 // POST /api/v1/auth/refresh
-router.post('/refresh', validate({ body: refreshSchema }), authController.refresh);
+router.post('/refresh', authRateLimit, validate({ body: refreshSchema }), authController.refresh);
 
 // POST /api/v1/auth/logout
 router.post('/logout', validate({ body: logoutSchema }), authController.logout);

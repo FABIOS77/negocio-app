@@ -1,50 +1,83 @@
-# Deployment
+# Guía de Despliegue — Render & Supabase PostgreSQL
 
-## Entornos
+Este documento contiene la guía paso a paso para desplegar el backend Express/TypeScript en **Render** utilizando **Supabase PostgreSQL** como base de datos administrada.
 
-| Entorno | BD | Backend |
-|---|---|---|
-| Desarrollo | PostgreSQL local | npm run dev |
-| Producción | Supabase | Render Web Service |
+---
 
-## Variables de entorno requeridas
+## 1. Configuración de Base de Datos en Supabase
 
-Ver .env.example en la raiz del proyecto.
+1. Crear un proyecto en [Supabase](https://supabase.com/).
+2. Ir a **Project Settings -> Database** y copiar la **URI de conexión de Transaction Pooler** (Puerto `6543`) o Session Pooler (Puerto `5432`).
+3. Formato de la URL:
+   `postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres`
+4. Asegurar que las variables de entorno de producción contengan `DATABASE_URL`. El backend incluye automáticamente la configuración SSL requerida por Supabase (`rejectUnauthorized: false`).
 
-Obligatorias:
-- DATABASE_URL — Connection string de PostgreSQL
-- JWT_ACCESS_SECRET — Secreto para firmar access tokens (min 32 chars)
-- JWT_REFRESH_SECRET — Secreto para firmar refresh tokens (distinto del anterior)
-- NODE_ENV — development | production | test
-- PORT — Puerto HTTP (Render lo inyecta automaticamente)
-- CORS_ORIGIN — Origin permitido (URL de la app)
+---
 
-Opcionales:
-- LOG_LEVEL — info | debug | warn | error
+## 2. Configuración del Web Service en Render
 
-## Render
+1. En el panel de Render, seleccionar **New + -> Web Service**.
+2. Conectar el repositorio GitHub/GitLab del proyecto.
+3. Ajustar los parámetros del servicio:
 
-- Tipo: Web Service (Node.js)
-- Build command: npm install && npm run build
-- Start command: npm start
-- Variables: configurar en el dashboard de Render (nunca en código)
-- Health check: GET /health
+| Parámetro | Valor |
+|---|---|
+| **Name** | `negocio-katering-backend` |
+| **Environment** | `Node` |
+| **Region** | Oregon (o la más cercana a Supabase) |
+| **Branch** | `main` |
+| **Build Command** | `npm run build` |
+| **Start Command** | `npm start` |
+| **Health Check Path** | `/health` o `/health/db` |
 
-## GitHub → Render
+---
 
-- Branch main → deploy automático en Render
-- Branch develop → desarrollo local
-- No hay pipeline CI/CD complejo en V1
+## 3. Variables de Entorno en Render
 
-## Checklist de deploy
+Configurar las siguientes variables en la sección **Environment** de Render:
 
-1. Configurar todas las variables de entorno en Render.
-2. Verificar conexión a Supabase desde Render (IP allowlist si aplica).
-3. Ejecutar migraciones: npx sequelize-cli db:migrate --env production
-4. Verificar GET /health responde 200.
-5. Verificar POST /api/v1/auth/login funciona.
+```env
+NODE_ENV=production
+PORT=10000
+DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+JWT_ACCESS_SECRET=clave_aleatoria_de_al_menos_32_caracteres_extremadamente_segura
+JWT_REFRESH_SECRET=otra_clave_diferente_de_al_menos_32_caracteres_extremadamente_segura
+ACCESS_TOKEN_EXPIRES=15m
+REFRESH_TOKEN_EXPIRES=30d
+CORS_ORIGIN=https://tu-app-flutter.web.app
+```
 
-## Rollback
+> [!CAUTION]
+> NUNCA usar `CORS_ORIGIN=*` en producción. Especificar las URLs exactas autorizadas.
 
-1. npx sequelize-cli db:migrate:undo --env production (si la migración falló)
-2. Redeploy del commit anterior en Render.
+---
+
+## 4. Ejecución de Migraciones en Producción
+
+Antes de iniciar el servicio por primera vez o al desplegar nuevas versiones con cambios en la base de datos, ejecutar las migraciones desde la terminal de Render o mediante un job de pre-deploy:
+
+```bash
+npx sequelize-cli db:migrate --env production
+```
+
+Para verificar el estado de las migraciones:
+```bash
+npx sequelize-cli db:migrate:status --env production
+```
+
+---
+
+## 5. Verificación del Despliegue (Smoke Test)
+
+Una vez que Render marque el servicio como **Live**, ejecutar los health checks:
+
+1. **HTTP Health Check**:
+   `GET https://negocio-katering-backend.onrender.com/health` -> HTTP 200 `{ "success": true, "data": { "status": "ok" } }`
+
+2. **Database Health Check**:
+   `GET https://negocio-katering-backend.onrender.com/health/db` -> HTTP 200 `{ "success": true, "data": { "status": "ok", "database": "connected" } }`
+
+3. **Smoke Test Completo**:
+   ```bash
+   npx tsx scripts/smoke-test.ts https://negocio-katering-backend.onrender.com
+   ```

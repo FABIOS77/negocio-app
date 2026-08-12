@@ -165,6 +165,56 @@ components:
 security:
   - bearerAuth: []
 paths:
+  /health:
+    get:
+      summary: Health check básico del servidor HTTP
+      security: []
+      tags: [system]
+      responses:
+        "200":
+          description: Servidor activo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean, example: true}
+                  data:
+                    type: object
+                    properties:
+                      status: {type: string, example: ok}
+  /health/db:
+    get:
+      summary: Health check de conectividad PostgreSQL
+      security: []
+      tags: [system]
+      responses:
+        "200":
+          description: Conexión con PostgreSQL exitosa
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean, example: true}
+                  data:
+                    type: object
+                    properties:
+                      status: {type: string, example: ok}
+                      database: {type: string, example: connected}
+        "503":
+          description: Base de datos no disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean, example: false}
+                  error:
+                    type: object
+                    properties:
+                      code: {type: string, example: SERVICE_UNAVAILABLE}
+                      message: {type: string, example: Database connection unavailable}
   /auth/login:
     post:
       summary: Login
