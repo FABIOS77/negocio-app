@@ -37,6 +37,14 @@ vi.mock('../../src/modules/dishes/dishes.repository', () => ({
   softDelete: vi.fn(),
 }));
 
+vi.mock('../../src/modules/orders/order.model', () => ({
+  Order: { findAll: vi.fn(), findByPk: vi.fn(), findAndCountAll: vi.fn(), count: vi.fn(), create: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/orders/order-item.model', () => ({
+  OrderItem: { findAll: vi.fn(), findByPk: vi.fn(), bulkCreate: vi.fn(), init: vi.fn() },
+}));
+
 import * as dishesRepo from '../../src/modules/dishes/dishes.repository';
 
 const mockDish = {

@@ -5,8 +5,51 @@
  * Importa el app de Express directamente (sin iniciar el servidor HTTP ni la BD).
  * El health check no requiere conexión a base de datos.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
+
+// Mock sequelize y modelos para evitar que Order.init() falle sin BD
+vi.mock('../../src/database/sequelize', () => ({
+  sequelize: {
+    define: vi.fn(),
+    transaction: vi.fn(),
+    authenticate: vi.fn(),
+    query: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/modules/users/user.model', () => ({
+  User: { findOne: vi.fn(), findByPk: vi.fn() },
+}));
+
+vi.mock('../../src/modules/auth/refresh-token.model', () => ({
+  RefreshToken: { create: vi.fn(), findOne: vi.fn(), update: vi.fn() },
+}));
+
+vi.mock('../../src/modules/dishes/dish.model', () => ({
+  Dish: { findAll: vi.fn(), findByPk: vi.fn() },
+}));
+
+vi.mock('../../src/modules/orders/order.model', () => ({
+  Order: { findAll: vi.fn(), findByPk: vi.fn(), findAndCountAll: vi.fn(), count: vi.fn(), create: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/orders/order-item.model', () => ({
+  OrderItem: { findAll: vi.fn(), findByPk: vi.fn(), bulkCreate: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/daily-menus/daily-menu.model', () => ({
+  DailyMenu: { findAll: vi.fn(), findByPk: vi.fn(), findOne: vi.fn(), findAndCountAll: vi.fn(), create: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/daily-menus/daily-menu-dish.model', () => ({
+  DailyMenuDish: { findAll: vi.fn(), findByPk: vi.fn(), create: vi.fn(), bulkCreate: vi.fn(), destroy: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/auth/refresh-token.model', () => ({
+  RefreshToken: { create: vi.fn(), findOne: vi.fn(), update: vi.fn(), init: vi.fn() },
+}));
+
 import { app } from '../../src/app';
 
 describe('GET /health', () => {

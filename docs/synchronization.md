@@ -1,4 +1,4 @@
-﻿# Synchronization
+# Synchronization
 
 ## Principios
 
@@ -120,3 +120,26 @@ Un pedido creado offline tiene UUID pero no order_number.
 El servidor asigna order_number al procesar el push (CREATE).
 El cliente recibe el order_number en el resultado del push o en el siguiente pull.
 Ver decisions/ADR-005-order-number.md.
+
+## Idempotencia en POST /orders (Sprint 3 — online con retries)
+
+**Implementado en Sprint 3**: cuando el cliente envía un `id` UUID en el body de
+`POST /api/v1/orders`, el servidor garantiza idempotencia:
+
+| Caso | HTTP | Comportamiento |
+|---|---|---|
+| Primera vez con UUID-X | 201 | Pedido creado |
+| Retry con mismo UUID-X | 200 | Pedido existente retornado |
+
+Ver decisions/ADR-007-order-idempotency.md.
+
+**Sprint 4+**: la tabla `sync_operations` añadirá idempotencia a nivel de
+operación completa (incluyendo UPDATE y DELETE offline).
+
+## Precios históricos en pedidos
+
+El `unit_price` en `order_items` es un snapshot del precio al momento de creación.
+Si el precio del plato cambia después, los pedidos existentes no se ven afectados.
+El servidor NUNCA acepta `unit_price` del cliente; lo obtiene desde `dishes.price`.
+Ver decisions/ADR-006-currency.md.
+

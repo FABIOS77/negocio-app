@@ -1,4 +1,4 @@
-﻿openapi: "3.0.3"
+openapi: "3.0.3"
 info:
   title: Negocio Katering API
   version: "1.0.0"
@@ -25,14 +25,43 @@ components:
       type: object
       properties:
         id: {type: string, format: uuid}
-        orderNumber: {type: string, nullable: true}
-        customerName: {type: string}
-        locationText: {type: string, nullable: true}
-        total: {type: number}
+        orderNumber: {type: string, nullable: true, example: '20260813-0001'}
+        customerName: {type: string, maxLength: 200}
+        locationText: {type: string, nullable: true, maxLength: 300}
+        total: {type: number, description: 'Total calculado por el backend (DECIMAL BOB)'}
         paymentMethod: {type: string, enum: [CASH, QR, OTHER]}
         status: {type: string, enum: [PENDING, DELIVERED, CANCELLED]}
         orderedAt: {type: string, format: date-time}
+        createdBy: {type: string, format: uuid}
         version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemDTO'
+    OrderItemDTO:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        dishId: {type: string, format: uuid}
+        dishNameSnapshot: {type: string, description: 'Nombre del plato al momento de creación (histórico)'}
+        quantity: {type: integer, minimum: 1}
+        unitPrice: {type: number, description: 'Precio unitario al momento de creación (histórico, en BOB)'}
+        subtotal: {type: number, description: 'quantity * unitPrice, calculado por backend'}
+        dish:
+          type: object
+          nullable: true
+          properties:
+            id: {type: string, format: uuid}
+            name: {type: string}
+            active: {type: boolean}
+    ProductionItemDTO:
+      type: object
+      properties:
+        dish_id: {type: string, format: uuid}
+        dish_name: {type: string}
+        total_quantity: {type: integer, description: 'Suma de cantidades del día, excluyendo CANCELLED'}
     DishDTO:
       type: object
       properties:
@@ -300,10 +329,29 @@ paths:
                       dishId: {type: string, format: uuid}
                       quantity: {type: integer, minimum: 1}
       responses:
-        "201": {description: Created}
-        "400": {description: Validation error}
-        "409": {description: Duplicate UUID}
-        "422": {description: Inactive dish}
+        "201":
+          description: Pedido creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/OrderDTO'
+        "200":
+          description: Pedido existente retornado (retry idempotente)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/OrderDTO'
+        "400": {description: Error de validación (items vacíos, quantity inválida, etc.)}
+        "404": {description: Plato no encontrado}
+        "422": {description: Plato inactivo o plato duplicado en el pedido}
   /orders/{id}:
     get:
       summary: Get order with items
@@ -311,11 +359,27 @@ paths:
       parameters:
         - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
       responses:
-        "200": {description: OK}
-        "404": {description: Not found}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/OrderDTO'
+        "400": {description: UUID inválido}
+        "404": {description: Pedido no encontrado}
   /orders/{id}/status:
     patch:
-      summary: Change order status (no DELETE in normal flow)
+      summary: "Cambiar estado (transiciones: PENDING→DELIVERED, PENDING→CANCELLED)"
+      description: |
+        Transiciones permitidas:
+        - PENDING → DELIVERED
+        - PENDING → CANCELLED
+        Los estados DELIVERED y CANCELLED son terminales (no pueden volver a PENDING).
+        No existe DELETE en el flujo de negocio; usar CANCELLED para cerrar un pedido.
       tags: [orders]
       parameters:
         - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
@@ -329,9 +393,19 @@ paths:
               properties:
                 status: {type: string, enum: [DELIVERED, CANCELLED]}
       responses:
-        "200": {description: OK}
-        "400": {description: Invalid state transition}
-        "404": {description: Not found}
+        "200":
+          description: Estado actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/OrderDTO'
+        "400": {description: Valor de status inválido}
+        "404": {description: Pedido no encontrado}
+        "409": {description: "Transición inválida (estado terminal)"}
   /expenses:
     get:
       summary: List expenses
@@ -450,12 +524,32 @@ paths:
         "200": {description: OK}
   /reports/production:
     get:
-      summary: Production summary for a day (excludes CANCELLED)
+      summary: Resumen de producción del día (excluye CANCELLED)
+      description: |
+        Agrupa los order_items de pedidos del día (interpretando la fecha en America/La_Paz),
+        excluyendo pedidos CANCELLED. Devuelve la cantidad total por plato, ordenada descendente.
       tags: [reports]
       parameters:
-        - {in: query, name: date, required: true, schema: {type: string, format: date}}
+        - in: query
+          name: date
+          required: true
+          schema: {type: string, format: date, example: '2026-08-13'}
+          description: Fecha en formato YYYY-MM-DD, interpretada en America/La_Paz
       responses:
-        "200": {description: OK}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProductionItemDTO'
+        "400": {description: Fecha faltante o formato inválido}
+        "401": {description: No autenticado}
   /reports/export:
     get:
       summary: Export Excel report

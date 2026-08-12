@@ -1,4 +1,4 @@
-﻿# Database
+# Database
 
 ## Consideraciones generales
 
@@ -85,8 +85,16 @@ UNIQUE(daily_menu_id, dish_id)
 | updated_at | TIMESTAMPTZ | NOT NULL |
 | deleted_at | TIMESTAMPTZ | nullable (solo sync interno) |
 
-Transiciones: PENDING->DELIVERED, PENDING->CANCELLED (estados terminales).
-No existe DELETE en flujo de negocio.
+Transiciones: PENDING→DELIVERED, PENDING→CANCELLED (estados terminales).
+No existe DELETE en flujo de negocio: CANCELLED es el estado de cierre.
+
+Notas de implementación (Sprint 3):
+- id = UUID generado por el cliente (offline-first). El servidor no genera el id.
+- order_number = asignado exclusivamente por el servidor (formato YYYYMMDD-NNNN).
+  Puede ser NULL si el pedido fue creado offline y aún no sincronizó.
+- El UNIQUE sobre order_number es sparse (WHERE order_number IS NOT NULL).
+- La idempotencia se garantiza por el PK UUID: mismo UUID = mismo pedido. Ver ADR-007.
+- deleted_at reservado para uso interno/sync; el flujo de negocio no expone DELETE.
 
 ### order_items
 | Columna | Tipo | Constraints |
@@ -99,8 +107,14 @@ No existe DELETE en flujo de negocio.
 | unit_price | DECIMAL(10,2) | NOT NULL, CHECK > 0 |
 | subtotal | DECIMAL(10,2) | NOT NULL |
 
-UNIQUE(order_id, dish_id)
-unit_price y dish_name_snapshot son historicos (copiados al crear pedido).
+UNIQUE(order_id, dish_id) — un mismo plato no puede repetirse en el mismo pedido.
+
+Notas de implementación (Sprint 3):
+- unit_price es un snapshot del precio al momento de creación. Nunca se recalcula.
+- dish_name_snapshot es un snapshot del nombre al momento de creación.
+- El backend NUNCA acepta unit_price del cliente; lo obtiene desde dishes.price.
+- subtotal = round2(unit_price * quantity), calculado en backend.
+- Ver ADR-006 para el manejo de valores monetarios.
 
 ### expense_categories
 | Columna | Tipo | Constraints |
@@ -159,7 +173,9 @@ unit_price y dish_name_snapshot son historicos (copiados al crear pedido).
 - idx_refresh_tokens_user_id, idx_refresh_tokens_token_hash
 - idx_dishes_active
 - idx_daily_menus_date (unique)
-- idx_orders_status, idx_orders_ordered_at, idx_orders_order_number (unique sparse)
+- idx_orders_ordered_at, idx_orders_status, idx_orders_created_by
+- idx_orders_order_number (unique sparse: WHERE order_number IS NOT NULL)
+- idx_order_items_order_dish_unique (unique: order_id, dish_id)
 - idx_order_items_order_id, idx_order_items_dish_id
 - idx_expenses_expense_date, idx_expenses_category_id
 - idx_change_log_entity_type, idx_change_log_id (pk, ya indexado)

@@ -14,10 +14,13 @@ import { errorMiddleware } from './middlewares/error.middleware';
 import { sendSuccess, sendError } from './utils/response';
 
 // ─── Rutas de módulos ─────────────────────────────────────────────────────────
+
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
 import dishesRoutes from './modules/dishes/dishes.routes';
 import dailyMenusRoutes from './modules/daily-menus/daily-menus.routes';
+import ordersRoutes from './modules/orders/orders.routes';
+import reportsRoutes from './modules/reports/reports.routes';
 
 export const app = express();
 
@@ -61,11 +64,11 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', usersRoutes);
 app.use('/api/v1/dishes', dishesRoutes);
 app.use('/api/v1/daily-menus', dailyMenusRoutes);
+app.use('/api/v1/orders', ordersRoutes);
+app.use('/api/v1/reports', reportsRoutes);
 
-// Módulos futuros (Sprint 3+):
-// app.use('/api/v1/orders', ordersRoutes);
+// Módulos futuros (Sprint 4+):
 // app.use('/api/v1/expenses', expensesRoutes);
-// app.use('/api/v1/reports', reportsRoutes);
 // app.use('/api/v1/sync', syncRoutes);
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────

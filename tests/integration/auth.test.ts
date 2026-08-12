@@ -62,6 +62,14 @@ vi.mock('../../src/modules/auth/refresh-token.model', () => ({
   RefreshToken: { create: vi.fn(), findOne: vi.fn(), update: vi.fn() },
 }));
 
+vi.mock('../../src/modules/orders/order.model', () => ({
+  Order: { findAll: vi.fn(), findByPk: vi.fn(), findAndCountAll: vi.fn(), count: vi.fn(), create: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/orders/order-item.model', () => ({
+  OrderItem: { findAll: vi.fn(), findByPk: vi.fn(), bulkCreate: vi.fn(), init: vi.fn() },
+}));
+
 import { User } from '../../src/modules/users/user.model';
 import { RefreshToken } from '../../src/modules/auth/refresh-token.model';
 import argon2 from 'argon2';

@@ -43,6 +43,10 @@ vi.mock('../../src/modules/auth/refresh-token.model', () => ({
   RefreshToken: { create: vi.fn(), findOne: vi.fn(), update: vi.fn() },
 }));
 
+vi.mock('../../src/modules/dishes/dish.model', () => ({
+  Dish: { findAll: vi.fn(), findByPk: vi.fn(), findOne: vi.fn() },
+}));
+
 vi.mock('../../src/modules/daily-menus/daily-menus.repository', () => ({
   findAll: vi.fn(),
   findById: vi.fn(),
@@ -64,6 +68,36 @@ vi.mock('../../src/modules/dishes/dishes.repository', () => ({
 
 vi.mock('../../src/utils/timezone', () => ({
   getTodayInLaPaz: vi.fn().mockReturnValue('2026-08-12'),
+}));
+
+vi.mock('../../src/modules/orders/order.model', () => ({
+  Order: {
+    findAll: vi.fn(),
+    findByPk: vi.fn(),
+    findAndCountAll: vi.fn(),
+    count: vi.fn(),
+    create: vi.fn(),
+    init: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/modules/orders/order-item.model', () => ({
+  OrderItem: {
+    findAll: vi.fn(),
+    findByPk: vi.fn(),
+    bulkCreate: vi.fn(),
+    init: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/modules/orders/orders.repository', () => ({
+  findById: vi.fn(),
+  findByIdRaw: vi.fn(),
+  findAll: vi.fn(),
+  create: vi.fn(),
+  updateStatus: vi.fn(),
+  countOrdersForDay: vi.fn(),
+  findProductionSummary: vi.fn(),
 }));
 
 import * as menuRepo from '../../src/modules/daily-menus/daily-menus.repository';
