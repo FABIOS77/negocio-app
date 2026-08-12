@@ -40,7 +40,23 @@ vi.mock('../../src/modules/auth/refresh-token.model', () => ({
 }));
 
 vi.mock('../../src/modules/dishes/dish.model', () => ({
-  Dish: { findAll: vi.fn(), findByPk: vi.fn() },
+  Dish: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/orders/order.model', () => ({
+  Order: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/orders/order-item.model', () => ({
+  OrderItem: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/expenses/expense-category.model', () => ({
+  ExpenseCategory: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/expenses/expense.model', () => ({
+  Expense: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
 }));
 
 vi.mock('../../src/modules/orders/orders.repository', () => ({

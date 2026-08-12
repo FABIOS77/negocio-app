@@ -56,12 +56,91 @@ components:
             id: {type: string, format: uuid}
             name: {type: string}
             active: {type: boolean}
-    ProductionItemDTO:
+    ExpenseCategoryDTO:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, maxLength: 100}
+        active: {type: boolean}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ExpenseDTO:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        description: {type: string}
+        amount: {type: number, minimum: 0.01}
+        categoryId: {type: string, format: uuid}
+        paymentMethod: {type: string, enum: [CASH, QR, OTHER]}
+        expenseDate: {type: string, format: date}
+        createdBy: {type: string, format: uuid}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        category:
+          $ref: '#/components/schemas/ExpenseCategoryDTO'
+    SalesReportDTO:
+      type: object
+      properties:
+        total_sales: {type: number}
+        order_count: {type: integer}
+        by_payment_method:
+          type: object
+          properties:
+            CASH: {type: number}
+            QR: {type: number}
+            OTHER: {type: number}
+        period:
+          type: object
+          properties:
+            period_type: {type: string, enum: [day, week, month, custom]}
+            date_from: {type: string, format: date}
+            date_to: {type: string, format: date}
+    ExpenseReportDTO:
+      type: object
+      properties:
+        total_expenses: {type: number}
+        expense_count: {type: integer}
+        by_category:
+          type: array
+          items:
+            type: object
+            properties:
+              category_id: {type: string, format: uuid}
+              category_name: {type: string}
+              total_amount: {type: number}
+        by_payment_method:
+          type: object
+          properties:
+            CASH: {type: number}
+            QR: {type: number}
+            OTHER: {type: number}
+        period:
+          type: object
+          properties:
+            period_type: {type: string, enum: [day, week, month, custom]}
+            date_from: {type: string, format: date}
+            date_to: {type: string, format: date}
+    FinancialResultDTO:
+      type: object
+      properties:
+        total_sales: {type: number}
+        total_expenses: {type: number}
+        result: {type: number, description: 'total_sales - total_expenses'}
+        period:
+          type: object
+          properties:
+            period_type: {type: string, enum: [day, week, month, custom]}
+            date_from: {type: string, format: date}
+            date_to: {type: string, format: date}
+    TopDishDTO:
       type: object
       properties:
         dish_id: {type: string, format: uuid}
         dish_name: {type: string}
-        total_quantity: {type: integer, description: 'Suma de cantidades del día, excluyendo CANCELLED'}
+        total_quantity: {type: integer}
+        total_revenue: {type: number}
     DishDTO:
       type: object
       properties:
@@ -417,9 +496,24 @@ paths:
         - {in: query, name: page, schema: {type: integer, default: 1}}
         - {in: query, name: limit, schema: {type: integer, default: 20}}
       responses:
-        "200": {description: OK}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/ExpenseDTO'
+                      pagination: {type: object}
     post:
-      summary: Create expense
+      summary: Create expense (idempotent with client UUID)
       tags: [expenses]
       requestBody:
         required: true
@@ -427,7 +521,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [description, amount, category_id, payment_method, expense_date]
+              required: [description, amount, category_id, payment_method]
               properties:
                 id: {type: string, format: uuid}
                 description: {type: string}
@@ -436,15 +530,28 @@ paths:
                 payment_method: {type: string, enum: [CASH, QR, OTHER]}
                 expense_date: {type: string, format: date}
       responses:
-        "201": {description: Created}
+        "201": {description: Gasto creado}
+        "200": {description: Gasto existente retornado (retry idempotente)}
+        "400": {description: Error de validación}
+        "422": {description: Categoría inactiva}
   /expenses/{id}:
     get:
-      summary: Get expense
+      summary: Get expense details
       tags: [expenses]
       parameters:
         - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
       responses:
-        "200": {description: OK}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/ExpenseDTO'
+        "404": {description: Gasto no encontrado}
     put:
       summary: Update expense
       tags: [expenses]
@@ -455,21 +562,50 @@ paths:
           application/json:
             schema:
               type: object
+              properties:
+                description: {type: string}
+                amount: {type: number, minimum: 0.01}
+                category_id: {type: string, format: uuid}
+                payment_method: {type: string, enum: [CASH, QR, OTHER]}
+                expense_date: {type: string, format: date}
       responses:
-        "200": {description: OK}
+        "200":
+          description: Gasto actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/ExpenseDTO'
+        "404": {description: Gasto no encontrado}
     delete:
       summary: Soft delete expense
       tags: [expenses]
       parameters:
         - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
       responses:
-        "204": {description: Deleted}
+        "200": {description: Gasto eliminado lógicamente}
   /expenses/categories:
     get:
       summary: List categories
       tags: [expenses]
+      parameters:
+        - {in: query, name: active, schema: {type: boolean}}
       responses:
-        "200": {description: OK}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExpenseCategoryDTO'
     post:
       summary: Create category
       tags: [expenses]
@@ -482,8 +618,33 @@ paths:
               required: [name]
               properties:
                 name: {type: string}
+                active: {type: boolean, default: true}
       responses:
-        "201": {description: Created}
+        "201": {description: Categoría creada}
+        "409": {description: Nombre duplicado}
+  /expenses/categories/{id}:
+    patch:
+      summary: Update category
+      tags: [expenses]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                active: {type: boolean}
+      responses:
+        "200": {description: Categoría actualizada}
+    delete:
+      summary: Delete or deactivate category if used by historical expenses
+      tags: [expenses]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: Categoría eliminada o desactivada si tiene gastos históricos}
   /reports/sales:
     get:
       summary: Sales report
@@ -493,35 +654,76 @@ paths:
         - {in: query, name: date_from, schema: {type: string, format: date}}
         - {in: query, name: date_to, schema: {type: string, format: date}}
       responses:
-        "200": {description: OK}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/SalesReportDTO'
   /reports/expenses:
     get:
       summary: Expenses report
       tags: [reports]
       parameters:
+        - {in: query, name: period, schema: {type: string, enum: [day, week, month, custom]}}
         - {in: query, name: date_from, schema: {type: string, format: date}}
         - {in: query, name: date_to, schema: {type: string, format: date}}
       responses:
-        "200": {description: OK}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/ExpenseReportDTO'
   /reports/result:
     get:
-      summary: Result report (sales - expenses)
+      summary: Result report (total_sales - total_expenses)
       tags: [reports]
       parameters:
+        - {in: query, name: period, schema: {type: string, enum: [day, week, month, custom]}}
         - {in: query, name: date_from, schema: {type: string, format: date}}
         - {in: query, name: date_to, schema: {type: string, format: date}}
       responses:
-        "200": {description: OK}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    $ref: '#/components/schemas/FinancialResultDTO'
   /reports/top-dishes:
     get:
       summary: Top dishes by quantity
       tags: [reports]
       parameters:
+        - {in: query, name: period, schema: {type: string, enum: [day, week, month, custom]}}
         - {in: query, name: date_from, schema: {type: string, format: date}}
         - {in: query, name: date_to, schema: {type: string, format: date}}
         - {in: query, name: limit, schema: {type: integer, default: 10}}
       responses:
-        "200": {description: OK}
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TopDishDTO'
   /reports/production:
     get:
       summary: Resumen de producción del día (excluye CANCELLED)

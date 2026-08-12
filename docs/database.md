@@ -126,6 +126,10 @@ Notas de implementación (Sprint 3):
 | created_at | TIMESTAMPTZ | NOT NULL |
 | updated_at | TIMESTAMPTZ | NOT NULL |
 
+Notas de implementación (Sprint 4):
+- name es único y obligatorio.
+- Si una categoría posee gastos históricos asociados, el endpoint DELETE conmuta `active: false` en lugar de borrar físicamente.
+
 ### expenses
 | Columna | Tipo | Constraints |
 |---|---|---|
@@ -134,12 +138,18 @@ Notas de implementación (Sprint 3):
 | amount | DECIMAL(10,2) | NOT NULL, CHECK > 0 |
 | category_id | UUID | FK expense_categories.id |
 | payment_method | VARCHAR(20) | CHECK IN ('CASH','QR','OTHER') |
-| expense_date | DATE | NOT NULL |
+| expense_date | DATE | NOT NULL (YYYY-MM-DD) |
 | created_by | UUID | FK users.id |
 | version | INTEGER | NOT NULL, DEFAULT 1 |
 | created_at | TIMESTAMPTZ | NOT NULL |
 | updated_at | TIMESTAMPTZ | NOT NULL |
-| deleted_at | TIMESTAMPTZ | nullable |
+| deleted_at | TIMESTAMPTZ | nullable (soft delete) |
+
+Notas de implementación (Sprint 4):
+- id puede ser provisto por el cliente para idempotencia offline (mismo UUID = HTTP 200).
+- amount es DECIMAL(10,2) > 0.
+- category_id debe referenciar una categoría existente y activa (active: true).
+- deleted_at para soft delete (no aparece en listados ni reportes).
 
 ### sync_operations
 | Columna | Tipo | Constraints |

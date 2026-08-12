@@ -1,28 +1,41 @@
 /**
  * src/modules/reports/reports.routes.ts
  *
- * Rutas del módulo de reportes — Sprint 3 implementa solo producción.
+ * Rutas del módulo de reportes.
+ * Todas protegidas con requireAuth.
  *
- * Implementado:
- *   GET /api/v1/reports/production?date=YYYY-MM-DD
- *
- * No implementado (Sprint futuro):
+ * Endpoints:
  *   GET /api/v1/reports/sales
  *   GET /api/v1/reports/expenses
  *   GET /api/v1/reports/result
  *   GET /api/v1/reports/top-dishes
- *   GET /api/v1/reports/export
+ *   GET /api/v1/reports/production
  */
 import { Router } from 'express';
 import { requireAuth } from '../../middlewares/auth.middleware';
 import { validate } from '../../middlewares/validate.middleware';
-import { productionQuerySchema } from '../orders/orders.schema';
+import {
+  reportQuerySchema,
+  topDishesQuerySchema,
+  productionQuerySchema,
+} from './reports.schema';
 import * as reportsController from './reports.controller';
 
 const router = Router();
 
-// Todas las rutas requieren autenticación
 router.use(requireAuth);
+
+// GET /api/v1/reports/sales?period=day|week|month|custom&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+router.get('/sales', validate({ query: reportQuerySchema }), reportsController.getSalesReport);
+
+// GET /api/v1/reports/expenses?period=day|week|month|custom&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+router.get('/expenses', validate({ query: reportQuerySchema }), reportsController.getExpenseReport);
+
+// GET /api/v1/reports/result?period=day|week|month|custom&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+router.get('/result', validate({ query: reportQuerySchema }), reportsController.getFinancialResult);
+
+// GET /api/v1/reports/top-dishes?period=day|week|month|custom&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&limit=10
+router.get('/top-dishes', validate({ query: topDishesQuerySchema }), reportsController.getTopDishes);
 
 // GET /api/v1/reports/production?date=YYYY-MM-DD
 router.get(

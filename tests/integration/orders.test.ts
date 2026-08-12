@@ -87,6 +87,22 @@ vi.mock('../../src/modules/orders/order-item.model', () => ({
   },
 }));
 
+vi.mock('../../src/modules/expenses/expense-category.model', () => ({
+  ExpenseCategory: {
+    findAll: vi.fn(),
+    findByPk: vi.fn(),
+    init: vi.fn(),
+  },
+}));
+
+vi.mock('../../src/modules/expenses/expense.model', () => ({
+  Expense: {
+    findAll: vi.fn(),
+    findByPk: vi.fn(),
+    init: vi.fn(),
+  },
+}));
+
 // Mocks necesarios para que la app no falle al cargar los demás módulos
 vi.mock('../../src/modules/dishes/dishes.repository', () => ({
   findAll: vi.fn(),

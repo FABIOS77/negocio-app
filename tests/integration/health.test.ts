@@ -50,6 +50,14 @@ vi.mock('../../src/modules/auth/refresh-token.model', () => ({
   RefreshToken: { create: vi.fn(), findOne: vi.fn(), update: vi.fn(), init: vi.fn() },
 }));
 
+vi.mock('../../src/modules/expenses/expense-category.model', () => ({
+  ExpenseCategory: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/expenses/expense.model', () => ({
+  Expense: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
 import { app } from '../../src/app';
 
 describe('GET /health', () => {
