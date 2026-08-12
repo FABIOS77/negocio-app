@@ -59,6 +59,22 @@ vi.mock('../../src/modules/expenses/expense.model', () => ({
   Expense: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
 }));
 
+vi.mock('../../src/modules/sync/sync-operation.model', () => ({
+  SyncOperation: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/sync/change-log.model', () => ({
+  ChangeLog: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/daily-menus/daily-menu.model', () => ({
+  DailyMenu: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/daily-menus/daily-menu-dish.model', () => ({
+  DailyMenuDish: { findAll: vi.fn(), init: vi.fn() },
+}));
+
 vi.mock('../../src/modules/orders/orders.repository', () => ({
   findById: vi.fn(),
   findByIdRaw: vi.fn(),

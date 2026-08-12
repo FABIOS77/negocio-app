@@ -22,6 +22,7 @@ import dailyMenusRoutes from './modules/daily-menus/daily-menus.routes';
 import ordersRoutes from './modules/orders/orders.routes';
 import expensesRoutes from './modules/expenses/expenses.routes';
 import reportsRoutes from './modules/reports/reports.routes';
+import syncRoutes from './modules/sync/sync.routes';
 
 export const app = express();
 
@@ -68,9 +69,7 @@ app.use('/api/v1/daily-menus', dailyMenusRoutes);
 app.use('/api/v1/orders', ordersRoutes);
 app.use('/api/v1/expenses', expensesRoutes);
 app.use('/api/v1/reports', reportsRoutes);
-
-// Módulos futuros (Sprint 5+):
-// app.use('/api/v1/sync', syncRoutes);
+app.use('/api/v1/sync', syncRoutes);
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 

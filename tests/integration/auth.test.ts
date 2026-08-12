@@ -78,6 +78,14 @@ vi.mock('../../src/modules/expenses/expense.model', () => ({
   Expense: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
 }));
 
+vi.mock('../../src/modules/sync/sync-operation.model', () => ({
+  SyncOperation: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/sync/change-log.model', () => ({
+  ChangeLog: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
 import { User } from '../../src/modules/users/user.model';
 import { RefreshToken } from '../../src/modules/auth/refresh-token.model';
 import argon2 from 'argon2';

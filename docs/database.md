@@ -159,23 +159,36 @@ Notas de implementación (Sprint 4):
 | entity_id | UUID | NOT NULL |
 | operation | VARCHAR(10) | CHECK IN ('CREATE','UPDATE','DELETE') |
 | payload | JSONB | NOT NULL |
-| entity_version | INTEGER | NOT NULL |
+| base_version | INTEGER | nullable |
 | client_timestamp | TIMESTAMPTZ | NOT NULL |
-| processed_at | TIMESTAMPTZ | nullable |
-| status | VARCHAR(20) | CHECK IN ('PENDING','PROCESSED','FAILED') |
+| status | VARCHAR(20) | CHECK IN ('PROCESSED','DUPLICATE','CONFLICT','FAILED') |
+| error_code | VARCHAR(50) | nullable |
 | error_message | TEXT | nullable |
+| server_version | INTEGER | nullable |
+| server_change_id | BIGINT | nullable |
+| result_data | JSONB | nullable |
 | processed_by | UUID | FK users.id |
+| processed_at | TIMESTAMPTZ | nullable |
+| created_at | TIMESTAMPTZ | NOT NULL |
+
+Notas de implementación (Sprint 5):
+- operation_id previene ejecuciones duplicadas (idempotencia). Si ya existe, retorna status DUPLICATE y el resultado previo sin modificar la BD.
+- processed_by se asigna desde el JWT autenticado.
 
 ### change_log
 | Columna | Tipo | Constraints |
 |---|---|---|
-| id | BIGSERIAL | PK (cursor incremental) |
+| server_change_id | BIGSERIAL | PK (cursor incremental) |
 | entity_type | VARCHAR(50) | NOT NULL |
 | entity_id | UUID | NOT NULL |
 | operation | VARCHAR(10) | CHECK IN ('CREATE','UPDATE','DELETE') |
 | snapshot | JSONB | NOT NULL |
-| changed_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
-| changed_by | UUID | FK users.id |
+| version | INTEGER | NOT NULL |
+| created_at | TIMESTAMPTZ | NOT NULL |
+
+Notas de implementación (Sprint 5):
+- server_change_id es una secuencia mono-incremental que actúa como cursor determinista para PULL.
+- snapshot contiene el estado completo de la entidad resultante.
 
 ## Indices principales
 

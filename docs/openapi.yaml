@@ -768,7 +768,7 @@ paths:
               schema: {type: string, format: binary}
   /sync/push:
     post:
-      summary: Push offline operations to server
+      summary: Enviar operaciones offline al servidor (Push atómico e idempotente)
       tags: [sync]
       requestBody:
         required: true
@@ -776,64 +776,81 @@ paths:
           application/json:
             schema:
               type: object
+              required: [operations]
               properties:
                 operations:
                   type: array
+                  maxItems: 100
                   items:
                     type: object
-                    required: [operation_id, entity_type, entity_id, operation, payload, entity_version, client_timestamp]
+                    required: [operation_id, entity_type, entity_id, operation, payload, client_timestamp]
                     properties:
-                      operation_id: {type: string, format: uuid}
-                      entity_type: {type: string}
+                      operation_id: {type: string, format: uuid, description: 'Clave de idempotencia'}
+                      entity_type: {type: string, enum: [user, dish, daily_menu, order, expense_category, expense]}
                       entity_id: {type: string, format: uuid}
                       operation: {type: string, enum: [CREATE, UPDATE, DELETE]}
                       payload: {type: object}
-                      entity_version: {type: integer}
+                      base_version: {type: integer, description: 'Requerido para UPDATE y DELETE'}
                       client_timestamp: {type: string, format: date-time}
       responses:
         "200":
-          description: OK
+          description: Resultado del procesamiento del batch
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  processed: {type: integer}
-                  failed: {type: integer}
-                  results:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        operation_id: {type: string}
-                        status: {type: string, enum: [PROCESSED, FAILED, CONFLICT]}
-                        error: {type: string}
+                  success: {type: boolean}
+                  data:
+                    type: object
+                    properties:
+                      processed: {type: integer}
+                      failed: {type: integer}
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            operation_id: {type: string, format: uuid}
+                            status: {type: string, enum: [PROCESSED, DUPLICATE, CONFLICT, FAILED]}
+                            server_version: {type: integer, nullable: true}
+                            server_change_id: {type: integer, nullable: true}
+                            error_code: {type: string, nullable: true}
+                            error_message: {type: string, nullable: true}
+                            data: {type: object, nullable: true}
+        "401": {description: No autenticado}
   /sync/pull:
     get:
-      summary: Pull changes from server using incremental cursor
+      summary: Obtener cambios incrementales del servidor (Pull por cursor)
       tags: [sync]
       parameters:
-        - {in: query, name: cursor, schema: {type: integer}}
-        - {in: query, name: entity_types, schema: {type: string}}
-        - {in: query, name: limit, schema: {type: integer, default: 100}}
+        - {in: query, name: cursor, schema: {type: integer, default: 0}, description: 'Último server_change_id procesado'}
+        - {in: query, name: limit, schema: {type: integer, default: 100, maximum: 500}}
+        - {in: query, name: entity_types, schema: {type: string}, description: 'Coma-separated list p.ej. order,expense'}
       responses:
         "200":
-          description: OK
+          description: Lista de cambios posteriores al cursor
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  changes:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        cursor: {type: integer}
-                        entity_type: {type: string}
-                        entity_id: {type: string, format: uuid}
-                        operation: {type: string}
-                        snapshot: {type: object}
-                        changed_at: {type: string, format: date-time}
-                  next_cursor: {type: integer}
-                  has_more: {type: boolean}
+                  success: {type: boolean}
+                  data:
+                    type: object
+                    properties:
+                      changes:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            server_change_id: {type: integer}
+                            entity_type: {type: string}
+                            entity_id: {type: string, format: uuid}
+                            operation: {type: string, enum: [CREATE, UPDATE, DELETE]}
+                            data: {type: object}
+                            version: {type: integer}
+                            created_at: {type: string, format: date-time}
+                      next_cursor: {type: integer}
+                      has_more: {type: boolean}
+        "401": {description: No autenticado}

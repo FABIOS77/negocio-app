@@ -53,6 +53,14 @@ vi.mock('../../src/modules/expenses/expense.model', () => ({
   Expense: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
 }));
 
+vi.mock('../../src/modules/sync/sync-operation.model', () => ({
+  SyncOperation: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
+vi.mock('../../src/modules/sync/change-log.model', () => ({
+  ChangeLog: { findAll: vi.fn(), findByPk: vi.fn(), init: vi.fn() },
+}));
+
 import * as dishesRepo from '../../src/modules/dishes/dishes.repository';
 
 const mockDish = {

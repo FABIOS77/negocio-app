@@ -14,6 +14,7 @@ import { Order } from '../modules/orders/order.model';
 import { OrderItem } from '../modules/orders/order-item.model';
 import { ExpenseCategory } from '../modules/expenses/expense-category.model';
 import { Expense } from '../modules/expenses/expense.model';
+import { SyncOperation } from '../modules/sync/sync-operation.model';
 
 export function setupAssociations(): void {
   // User ──< RefreshToken
@@ -101,5 +102,16 @@ export function setupAssociations(): void {
   Expense.belongsTo(User, {
     foreignKey: 'createdBy',
     as: 'creator',
+  });
+
+  // User ──< SyncOperation
+  User.hasMany(SyncOperation, {
+    foreignKey: 'processedBy',
+    as: 'syncOperations',
+  });
+
+  SyncOperation.belongsTo(User, {
+    foreignKey: 'processedBy',
+    as: 'processor',
   });
 }

@@ -1,145 +1,128 @@
-# Synchronization
+# Synchronization Engine Protocol (Backend V1)
 
 ## Principios
 
-- Flutter opera offline. Los pedidos y gastos pueden crearse sin conexión.
-- El backend es la fuente de verdad.
-- UUID generado por el cliente es el identificador técnico permanente.
-- La sincronización es bidireccional: push (cliente→servidor) y pull (servidor→cliente).
+- Flutter opera offline-first. Pedidos, gastos, platos, menús y categorías pueden crearse o modificarse sin conexión.
+- El backend PostgreSQL es la fuente de verdad central.
+- Los UUIDs v4 generados por el cliente son los identificadores técnicos permanentes.
+- La sincronización es bidireccional: **PUSH** (cliente → servidor) y **PULL** (servidor → cliente).
+- El protocolo es **atómico**, **idempotente** y **determinista**.
 
-## Push — Cliente hacia servidor
+---
+
+## 1. Push — Cliente hacia servidor
 
 ### Endpoint
+`POST /api/v1/sync/push` (requiere cabecera `Authorization: Bearer <JWT>`)
 
-POST /api/v1/sync/push
-
-### Request
-
-`json
+### Body
+```json
 {
   "operations": [
     {
-      "operation_id": "uuid (idempotency key, generado por cliente)",
-      "entity_type": "order",
-      "entity_id": "uuid",
+      "operation_id": "uuid-op-1 (idempotency key)",
+      "entity_type": "order|expense|dish|daily_menu|expense_category",
+      "entity_id": "uuid-ent-1",
       "operation": "CREATE|UPDATE|DELETE",
       "payload": {},
-      "entity_version": 3,
-      "client_timestamp": "2026-08-11T20:00:00Z"
+      "client_timestamp": "2026-08-12T12:00:00.000Z",
+      "base_version": 1
     }
   ]
 }
-`
+```
 
-### Procesamiento (por operación)
-
-1. Verificar si operation_id ya existe en sync_operations.
-   - Si existe con status=PROCESSED: retornar resultado anterior (idempotente).
-2. Validar payload con Zod según entity_type + operation.
-3. Para UPDATE/DELETE: comparar entity_version del payload con version actual del registro.
-   - Si version del cliente < version del servidor: CONFLICT (server-wins). Retornar 409 parcial.
-4. Aplicar operación en transacción:
-   - CREATE: INSERT con entity_id del cliente.
-   - UPDATE: UPDATE + version++.
-   - DELETE: SET deleted_at = NOW() + version++.
-5. Insertar fila en change_log.
-6. Marcar sync_operation como PROCESSED.
-7. En caso de error: marcar FAILED + registrar error_message.
+### Proceso de Ejecución (Atómico por operación)
+1. **Idempotencia (`operation_id`)**: Se busca en la tabla `sync_operations`. Si ya existe, se devuelve el resultado previamente guardado con `status: "DUPLICATE"`.
+2. **Seguridad**:
+   - `processed_by` se obtiene del JWT autenticado (`req.user.sub`).
+   - `entity_type = 'user'` con `operation = 'CREATE'` es rechazado (`USER_OFFLINE_CREATE_FORBIDDEN`).
+3. **Concurrencia Optimista (UPDATE/DELETE)**:
+   - Se compara `entity.version` con `base_version` enviada por el cliente.
+   - Si no coinciden: `status: "CONFLICT"`. El servidor retorna la versión y datos actuales del servidor sin modificar la BD ni escribir en `change_log`.
+4. **Transacción de Dominio**:
+   - Se aplica la operación vía los servicios de dominio (`orders.service`, `expenses.service`, etc.).
+   - Se incrementa `version`.
+   - Se inserta un evento en `change_log` (asigna `server_change_id`).
+   - Se registra el resultado en `sync_operations` (`status: "PROCESSED"`).
 
 ### Response
-
-`json
+```json
 {
-  "processed": 4,
-  "failed": 1,
-  "results": [
-    { "operation_id": "uuid", "status": "PROCESSED|FAILED|CONFLICT", "error": "..." }
-  ]
+  "success": true,
+  "data": {
+    "processed": 1,
+    "failed": 0,
+    "results": [
+      {
+        "operation_id": "uuid-op-1",
+        "status": "PROCESSED|DUPLICATE|CONFLICT|FAILED",
+        "server_version": 2,
+        "server_change_id": 1004,
+        "data": {}
+      }
+    ]
+  }
 }
-`
+```
 
-## Pull — Servidor hacia cliente
+---
+
+## 2. Pull — Servidor hacia cliente
 
 ### Endpoint
+`GET /api/v1/sync/pull?cursor=1000&limit=100&entity_types=order,expense`
 
-GET /api/v1/sync/pull?cursor=1003&entity_types=order,expense&limit=100
-
-### Cursor incremental
-
-La tabla change_log tiene un id BIGSERIAL autoincremental.
-El cliente guarda el último cursor recibido y lo envía en el siguiente pull.
-El servidor devuelve todas las filas con id > cursor.
-
-Ventajas sobre timestamp:
-- No depende de relojes de dispositivos.
-- No pierde cambios entre dos pulls.
-- Paginable y determinista.
+### Cursor Incremental (`server_change_id`)
+- `change_log.server_change_id` es un entero `BIGSERIAL` autoincremental.
+- El cliente envía `cursor` (último `server_change_id` recibido).
+- El servidor devuelve todas las entradas con `server_change_id > cursor`.
+- Se permite filtrado opcional por `entity_types` (separados por coma).
 
 ### Response
-
-`json
+```json
 {
-  "changes": [
-    {
-      "cursor": 1004,
-      "entity_type": "order",
-      "entity_id": "uuid",
-      "operation": "UPDATE",
-      "snapshot": {},
-      "changed_at": "2026-08-11T23:00:00Z"
-    }
-  ],
-  "next_cursor": 1006,
-  "has_more": false
+  "success": true,
+  "data": {
+    "changes": [
+      {
+        "server_change_id": 1004,
+        "entity_type": "order",
+        "entity_id": "uuid",
+        "operation": "CREATE|UPDATE|DELETE",
+        "data": {},
+        "version": 2,
+        "created_at": "2026-08-12T12:00:00.000Z"
+      }
+    ],
+    "next_cursor": 1004,
+    "has_more": false
+  }
 }
-`
+```
 
-El cliente guarda next_cursor y lo usa en el próximo pull.
+---
 
-## Manejo de conflictos (Server-Wins V1)
+## 3. Matriz de Manejo de Conflictos (V1)
 
-| Caso | Comportamiento |
+| Caso | Comportamiento del Servidor |
 |---|---|
-| CREATE con UUID nuevo | Sin conflicto |
-| UPDATE con version correcta | Se aplica, version++ |
-| UPDATE con version desactualizada | Rechazado (CONFLICT). Cliente debe hacer pull. |
-| DELETE | Aplicado si version >= version del servidor |
+| CREATE con UUID nuevo | Creado exitosamente (`version: 1`, `PROCESSED`) |
+| CREATE con UUID existente | Idempotente (`PROCESSED` o `DUPLICATE`) |
+| UPDATE con `base_version` correcta | Aplicado exitosamente (`version++`, `PROCESSED`) |
+| UPDATE con `base_version` obsoleta | Rechazado (`CONFLICT`). Devuelve estado y versión del servidor |
+| DELETE con `base_version` correcta | Soft-delete aplicado (`version++`, `PROCESSED`) |
+| DELETE con `base_version` obsoleta | Rechazado (`CONFLICT`). |
 
-No se implementa CRDT en V1.
+---
 
-## Idempotencia
+## 4. Retención del Change Log
+En V1 el historial de `change_log` se conserva indefinidamente debido al volumen controlado previsto.
 
-- operation_id es un UUID generado por el cliente.
-- El servidor almacena cada operation_id en sync_operations.
-- Si llega la misma operation_id dos veces: retornar resultado previo sin re-procesar.
-- Garantiza que reenvíos por timeout no crean duplicados.
+---
 
-## order_number en contexto offline
-
-Un pedido creado offline tiene UUID pero no order_number.
-El servidor asigna order_number al procesar el push (CREATE).
-El cliente recibe el order_number en el resultado del push o en el siguiente pull.
-Ver decisions/ADR-005-order-number.md.
-
-## Idempotencia en POST /orders (Sprint 3 — online con retries)
-
-**Implementado en Sprint 3**: cuando el cliente envía un `id` UUID en el body de
-`POST /api/v1/orders`, el servidor garantiza idempotencia:
-
-| Caso | HTTP | Comportamiento |
-|---|---|---|
-| Primera vez con UUID-X | 201 | Pedido creado |
-| Retry con mismo UUID-X | 200 | Pedido existente retornado |
-
-Ver decisions/ADR-007-order-idempotency.md.
-
-**Sprint 4+**: la tabla `sync_operations` añadirá idempotencia a nivel de
-operación completa (incluyendo UPDATE y DELETE offline).
-
-## Precios históricos en pedidos
-
-El `unit_price` en `order_items` es un snapshot del precio al momento de creación.
-Si el precio del plato cambia después, los pedidos existentes no se ven afectados.
-El servidor NUNCA acepta `unit_price` del cliente; lo obtiene desde `dishes.price`.
-Ver decisions/ADR-006-currency.md.
-
+## 5. Decisiones Arquitectónicas Relacionadas
+- **ADR-005**: Generación de `order_number` por el servidor.
+- **ADR-006**: Valores monetarios `DECIMAL(10,2)` en BOB.
+- **ADR-007**: Idempotencia en POST /orders por UUID.
+- **ADR-008**: Protocolo y Motor de Sincronización Offline (Push & Pull).
