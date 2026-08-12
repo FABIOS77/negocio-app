@@ -30,8 +30,9 @@ export function validate(schemas: RequestSchemas) {
         req.body = schemas.body.parse(req.body);
       }
       if (schemas.query) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        req.query = schemas.query.parse(req.query) as any;
+        // Express 5 hace req.query read-only; usar Object.assign para mutarlo
+        const parsed = schemas.query.parse(req.query);
+        Object.assign(req.query, parsed);
       }
       if (schemas.params) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

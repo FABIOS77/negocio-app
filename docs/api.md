@@ -1,6 +1,8 @@
-﻿# API Reference
+# API Reference
 
 Base URL: /api/v1
+
+> Sprint 2 implementado: /auth, /users/me, /dishes, /daily-menus (incluyendo /draw).
 
 ## Autenticación
 

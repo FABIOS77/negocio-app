@@ -9,6 +9,9 @@
  */
 import { User } from '../modules/users/user.model';
 import { RefreshToken } from '../modules/auth/refresh-token.model';
+import { Dish } from '../modules/dishes/dish.model';
+import { DailyMenu } from '../modules/daily-menus/daily-menu.model';
+import { DailyMenuDish } from '../modules/daily-menus/daily-menu-dish.model';
 
 export function setupAssociations(): void {
   // User ──< RefreshToken (un usuario puede tener múltiples sesiones)
@@ -22,4 +25,24 @@ export function setupAssociations(): void {
     foreignKey: 'userId',
     as: 'user',
   });
+
+  // DailyMenu >──< Dish  (many-to-many via DailyMenuDish)
+  DailyMenu.belongsToMany(Dish, {
+    through: DailyMenuDish,
+    foreignKey: 'dailyMenuId',
+    otherKey: 'dishId',
+    as: 'dishes',
+  });
+
+  Dish.belongsToMany(DailyMenu, {
+    through: DailyMenuDish,
+    foreignKey: 'dishId',
+    otherKey: 'dailyMenuId',
+    as: 'dailyMenus',
+  });
+
+  // Directas para queries con include
+  DailyMenuDish.belongsTo(DailyMenu, { foreignKey: 'dailyMenuId', as: 'dailyMenu' });
+  DailyMenuDish.belongsTo(Dish, { foreignKey: 'dishId', as: 'dish' });
+  DailyMenu.hasMany(DailyMenuDish, { foreignKey: 'dailyMenuId', as: 'dailyMenuDishes' });
 }
