@@ -1,0 +1,19 @@
+# Normalizar line endings a LF en el repositorio (CRLF en checkout en Windows)
+* text=auto
+
+# Archivos que deben ser siempre LF
+*.ts    text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.env*  text eol=lf
+*.rc    text eol=lf
+
+# Archivos binarios
+*.png   binary
+*.jpg   binary
+*.jpeg  binary

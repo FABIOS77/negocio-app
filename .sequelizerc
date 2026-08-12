@@ -1,0 +1,13 @@
+// .sequelizerc — Configuración de rutas para Sequelize CLI
+// Este archivo es CJS (no TypeScript) porque es consumido directamente por sequelize-cli.
+
+'use strict';
+
+const path = require('path');
+
+module.exports = {
+  config: path.resolve('sequelize-config.js'),
+  'models-path': path.resolve('src', 'database', 'models'),
+  'seeders-path': path.resolve('src', 'database', 'seeders'),
+  'migrations-path': path.resolve('src', 'database', 'migrations'),
+};

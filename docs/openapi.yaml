@@ -1,0 +1,543 @@
+﻿openapi: "3.0.3"
+info:
+  title: Negocio Katering API
+  version: "1.0.0"
+  description: API REST para gestion de pedidos y contabilidad de negocio de comida.
+servers:
+  - url: /api/v1
+    description: API v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UserDTO:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        email: {type: string, format: email}
+        active: {type: boolean}
+        createdAt: {type: string, format: date-time}
+    OrderDTO:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        orderNumber: {type: string, nullable: true}
+        customerName: {type: string}
+        locationText: {type: string, nullable: true}
+        total: {type: number}
+        paymentMethod: {type: string, enum: [CASH, QR, OTHER]}
+        status: {type: string, enum: [PENDING, DELIVERED, CANCELLED]}
+        orderedAt: {type: string, format: date-time}
+        version: {type: integer}
+    DishDTO:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        price: {type: number}
+        active: {type: boolean}
+        version: {type: integer}
+    ExpenseDTO:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        description: {type: string}
+        amount: {type: number}
+        expenseDate: {type: string, format: date}
+        version: {type: integer}
+    ErrorDTO:
+      type: object
+      properties:
+        error: {type: string}
+        message: {type: string}
+security:
+  - bearerAuth: []
+paths:
+  /auth/login:
+    post:
+      summary: Login
+      security: []
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {type: string}
+                password: {type: string}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: {type: string}
+                  refreshToken: {type: string}
+        "400": {description: Validation error}
+        "401": {description: Invalid credentials}
+        "403": {description: User inactive}
+  /auth/refresh:
+    post:
+      summary: Renew access token
+      security: []
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: {type: string}
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: {type: string}
+        "401": {description: Invalid token}
+  /auth/logout:
+    post:
+      summary: Logout
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: {type: string}
+      responses:
+        "204": {description: OK}
+  /users/me:
+    get:
+      summary: Get current user
+      tags: [users]
+      responses:
+        "200": {description: OK}
+    patch:
+      summary: Update current user
+      tags: [users]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                password: {type: string}
+      responses:
+        "200": {description: OK}
+  /dishes:
+    get:
+      summary: List dishes
+      tags: [dishes]
+      parameters:
+        - {in: query, name: active, schema: {type: boolean}}
+        - {in: query, name: page, schema: {type: integer, default: 1}}
+        - {in: query, name: limit, schema: {type: integer, default: 20}}
+      responses:
+        "200": {description: OK}
+    post:
+      summary: Create dish
+      tags: [dishes]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, price]
+              properties:
+                name: {type: string}
+                description: {type: string}
+                price: {type: number, minimum: 0.01}
+                imageUrl: {type: string}
+                active: {type: boolean}
+      responses:
+        "201": {description: Created}
+        "400": {description: Validation error}
+        "409": {description: Duplicate name}
+  /dishes/{id}:
+    get:
+      summary: Get dish
+      tags: [dishes]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: OK}
+        "404": {description: Not found}
+    put:
+      summary: Update dish
+      tags: [dishes]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string}
+                price: {type: number}
+                active: {type: boolean}
+      responses:
+        "200": {description: OK}
+    delete:
+      summary: Soft delete dish
+      tags: [dishes]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "204": {description: Deleted}
+        "409": {description: Dish in active orders}
+  /daily-menus:
+    get:
+      summary: List daily menus
+      tags: [daily-menus]
+      parameters:
+        - {in: query, name: date, schema: {type: string, format: date}}
+      responses:
+        "200": {description: OK}
+    post:
+      summary: Create daily menu
+      tags: [daily-menus]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [menu_date, dish_ids]
+              properties:
+                menu_date: {type: string, format: date}
+                dish_ids:
+                  type: array
+                  items: {type: string, format: uuid}
+      responses:
+        "201": {description: Created}
+        "409": {description: Date already exists}
+        "422": {description: Inactive dish}
+  /daily-menus/today:
+    get:
+      summary: Get today menu (America/La_Paz)
+      tags: [daily-menus]
+      responses:
+        "200": {description: OK}
+  /daily-menus/{id}:
+    get:
+      summary: Get daily menu
+      tags: [daily-menus]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: OK}
+    put:
+      summary: Update daily menu
+      tags: [daily-menus]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dish_ids:
+                  type: array
+                  items: {type: string, format: uuid}
+                active: {type: boolean}
+      responses:
+        "200": {description: OK}
+  /orders:
+    get:
+      summary: List orders
+      tags: [orders]
+      parameters:
+        - {in: query, name: status, schema: {type: string, enum: [PENDING, DELIVERED, CANCELLED]}}
+        - {in: query, name: date, schema: {type: string, format: date}}
+        - {in: query, name: page, schema: {type: integer, default: 1}}
+        - {in: query, name: limit, schema: {type: integer, default: 20}}
+      responses:
+        "200": {description: OK}
+    post:
+      summary: Create order (total calculated by backend)
+      tags: [orders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerName, paymentMethod, items]
+              properties:
+                id: {type: string, format: uuid}
+                customerName: {type: string}
+                locationText: {type: string}
+                paymentMethod: {type: string, enum: [CASH, QR, OTHER]}
+                orderedAt: {type: string, format: date-time}
+                items:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [dishId, quantity]
+                    properties:
+                      dishId: {type: string, format: uuid}
+                      quantity: {type: integer, minimum: 1}
+      responses:
+        "201": {description: Created}
+        "400": {description: Validation error}
+        "409": {description: Duplicate UUID}
+        "422": {description: Inactive dish}
+  /orders/{id}:
+    get:
+      summary: Get order with items
+      tags: [orders]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: OK}
+        "404": {description: Not found}
+  /orders/{id}/status:
+    patch:
+      summary: Change order status (no DELETE in normal flow)
+      tags: [orders]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: {type: string, enum: [DELIVERED, CANCELLED]}
+      responses:
+        "200": {description: OK}
+        "400": {description: Invalid state transition}
+        "404": {description: Not found}
+  /expenses:
+    get:
+      summary: List expenses
+      tags: [expenses]
+      parameters:
+        - {in: query, name: category_id, schema: {type: string, format: uuid}}
+        - {in: query, name: date_from, schema: {type: string, format: date}}
+        - {in: query, name: date_to, schema: {type: string, format: date}}
+        - {in: query, name: page, schema: {type: integer, default: 1}}
+        - {in: query, name: limit, schema: {type: integer, default: 20}}
+      responses:
+        "200": {description: OK}
+    post:
+      summary: Create expense
+      tags: [expenses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [description, amount, category_id, payment_method, expense_date]
+              properties:
+                id: {type: string, format: uuid}
+                description: {type: string}
+                amount: {type: number, minimum: 0.01}
+                category_id: {type: string, format: uuid}
+                payment_method: {type: string, enum: [CASH, QR, OTHER]}
+                expense_date: {type: string, format: date}
+      responses:
+        "201": {description: Created}
+  /expenses/{id}:
+    get:
+      summary: Get expense
+      tags: [expenses]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200": {description: OK}
+    put:
+      summary: Update expense
+      tags: [expenses]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200": {description: OK}
+    delete:
+      summary: Soft delete expense
+      tags: [expenses]
+      parameters:
+        - {in: path, name: id, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "204": {description: Deleted}
+  /expenses/categories:
+    get:
+      summary: List categories
+      tags: [expenses]
+      responses:
+        "200": {description: OK}
+    post:
+      summary: Create category
+      tags: [expenses]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: {type: string}
+      responses:
+        "201": {description: Created}
+  /reports/sales:
+    get:
+      summary: Sales report
+      tags: [reports]
+      parameters:
+        - {in: query, name: period, schema: {type: string, enum: [day, week, month, custom]}}
+        - {in: query, name: date_from, schema: {type: string, format: date}}
+        - {in: query, name: date_to, schema: {type: string, format: date}}
+      responses:
+        "200": {description: OK}
+  /reports/expenses:
+    get:
+      summary: Expenses report
+      tags: [reports]
+      parameters:
+        - {in: query, name: date_from, schema: {type: string, format: date}}
+        - {in: query, name: date_to, schema: {type: string, format: date}}
+      responses:
+        "200": {description: OK}
+  /reports/result:
+    get:
+      summary: Result report (sales - expenses)
+      tags: [reports]
+      parameters:
+        - {in: query, name: date_from, schema: {type: string, format: date}}
+        - {in: query, name: date_to, schema: {type: string, format: date}}
+      responses:
+        "200": {description: OK}
+  /reports/top-dishes:
+    get:
+      summary: Top dishes by quantity
+      tags: [reports]
+      parameters:
+        - {in: query, name: date_from, schema: {type: string, format: date}}
+        - {in: query, name: date_to, schema: {type: string, format: date}}
+        - {in: query, name: limit, schema: {type: integer, default: 10}}
+      responses:
+        "200": {description: OK}
+  /reports/production:
+    get:
+      summary: Production summary for a day (excludes CANCELLED)
+      tags: [reports]
+      parameters:
+        - {in: query, name: date, required: true, schema: {type: string, format: date}}
+      responses:
+        "200": {description: OK}
+  /reports/export:
+    get:
+      summary: Export Excel report
+      tags: [reports]
+      parameters:
+        - {in: query, name: date_from, schema: {type: string, format: date}}
+        - {in: query, name: date_to, schema: {type: string, format: date}}
+        - {in: query, name: sections, schema: {type: string}}
+      responses:
+        "200":
+          description: Excel file
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: {type: string, format: binary}
+  /sync/push:
+    post:
+      summary: Push offline operations to server
+      tags: [sync]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operations:
+                  type: array
+                  items:
+                    type: object
+                    required: [operation_id, entity_type, entity_id, operation, payload, entity_version, client_timestamp]
+                    properties:
+                      operation_id: {type: string, format: uuid}
+                      entity_type: {type: string}
+                      entity_id: {type: string, format: uuid}
+                      operation: {type: string, enum: [CREATE, UPDATE, DELETE]}
+                      payload: {type: object}
+                      entity_version: {type: integer}
+                      client_timestamp: {type: string, format: date-time}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  processed: {type: integer}
+                  failed: {type: integer}
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        operation_id: {type: string}
+                        status: {type: string, enum: [PROCESSED, FAILED, CONFLICT]}
+                        error: {type: string}
+  /sync/pull:
+    get:
+      summary: Pull changes from server using incremental cursor
+      tags: [sync]
+      parameters:
+        - {in: query, name: cursor, schema: {type: integer}}
+        - {in: query, name: entity_types, schema: {type: string}}
+        - {in: query, name: limit, schema: {type: integer, default: 100}}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  changes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        cursor: {type: integer}
+                        entity_type: {type: string}
+                        entity_id: {type: string, format: uuid}
+                        operation: {type: string}
+                        snapshot: {type: object}
+                        changed_at: {type: string, format: date-time}
+                  next_cursor: {type: integer}
+                  has_more: {type: boolean}
