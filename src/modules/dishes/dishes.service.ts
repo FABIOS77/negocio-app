@@ -47,14 +47,16 @@ function toDTO(dish: Awaited<ReturnType<typeof dishesRepo.findById>>): DishDTO {
 }
 
 export async function listDishes(query: DishQueryInput) {
+  const page = Math.max(1, Number(query?.page) || 1);
+  const limit = Math.min(100, Math.max(1, Number(query?.limit) || 20));
   const { count, rows } = await dishesRepo.findAll(
-    { active: query.active },
-    { page: query.page, limit: query.limit },
+    { active: query?.active },
+    { page, limit },
   );
 
   return {
     data: rows.map(toDTO),
-    pagination: buildPagination(count, query.page, query.limit),
+    pagination: buildPagination(count, page, limit),
   };
 }
 
