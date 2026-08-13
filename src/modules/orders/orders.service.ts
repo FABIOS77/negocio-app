@@ -170,7 +170,7 @@ export async function createOrder(
   }
 
   // Verificar que estén activos y no soft-deleted
-  const inactiveDishes = dishes.filter((d) => !d.active || d.deletedAt !== null);
+  const inactiveDishes = dishes.filter((d) => !d.active || Boolean(d.deletedAt));
   if (inactiveDishes.length > 0) {
     const names = inactiveDishes.map((d) => d.name).join(', ');
     throw new BusinessRuleError(`The following dishes are inactive or deleted: ${names}`);

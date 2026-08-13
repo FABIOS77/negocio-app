@@ -9,6 +9,8 @@
 import { Sequelize } from 'sequelize';
 import { env } from '../config/env';
 
+const isSupabase = env.DATABASE_URL.includes('supabase');
+
 export const sequelize = new Sequelize(env.DATABASE_URL, {
   dialect: 'postgres',
   logging: env.NODE_ENV === 'development' ? console.warn : false,
@@ -21,7 +23,7 @@ export const sequelize = new Sequelize(env.DATABASE_URL, {
   },
 
   dialectOptions:
-    env.NODE_ENV === 'production'
+    env.NODE_ENV === 'production' || isSupabase
       ? {
           ssl: {
             require: true,

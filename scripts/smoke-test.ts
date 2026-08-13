@@ -10,6 +10,8 @@
  */
 import crypto from 'crypto';
 
+import { toLocalDate } from '../src/utils/timezone';
+
 const BASE_URL = process.argv[2] || process.env['API_URL'] || 'http://localhost:3000';
 
 async function runSmokeTest() {
@@ -22,6 +24,7 @@ async function runSmokeTest() {
   const testExpenseId = crypto.randomUUID();
   const testCategoryId = '550e8400-e29b-41d4-a716-446655440400';
   const opIdPush = crypto.randomUUID();
+  const todayStr = toLocalDate(new Date());
 
   // Helper HTTP fetch
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -70,24 +73,23 @@ async function runSmokeTest() {
   // Paso 4: Create dish
   console.log('\n4️⃣ [POST /api/v1/dishes] Creando plato de prueba...');
   const dishRes = await request('POST', '/api/v1/dishes', {
-    id: testDishId,
     name: `Plato Smoke ${Date.now()}`,
     description: 'Descripción plato de prueba',
     price: 25.5,
+    active: true,
   });
   if (!dishRes.ok) throw new Error(`Create dish falló (${dishRes.status})`);
-  console.log(`   ✅ Plato creado ID: ${dishRes.data.data.id}`);
+  const createdDishId = dishRes.data.data.id;
+  console.log(`   ✅ Plato creado ID: ${createdDishId} | Active: ${dishRes.data.data.active}`);
 
   // Paso 5: Create daily menu
   console.log('\n5️⃣ [POST /api/v1/daily-menus] Creando menú diario...');
-  const todayStr = new Date().toISOString().substring(0, 10);
   const menuRes = await request('POST', '/api/v1/daily-menus', {
-    id: testMenuId,
-    menu_date: todayStr,
-    dish_ids: [testDishId],
+    menuDate: todayStr,
+    dishIds: [createdDishId],
   });
   if (!menuRes.ok && menuRes.status !== 409) {
-    throw new Error(`Create daily menu falló (${menuRes.status})`);
+    throw new Error(`Create daily menu falló (${menuRes.status}): ${JSON.stringify(menuRes.data)}`);
   }
   console.log('   ✅ Menú diario preparado');
 
@@ -97,15 +99,15 @@ async function runSmokeTest() {
     id: testOrderId,
     customer_name: 'Cliente Smoke Test',
     payment_method: 'CASH',
-    items: [{ dish_id: testDishId, quantity: 2 }],
+    items: [{ dish_id: createdDishId, quantity: 2 }],
   });
-  if (!orderRes.ok) throw new Error(`Create order falló (${orderRes.status})`);
+  if (!orderRes.ok) throw new Error(`Create order falló (${orderRes.status}): ${JSON.stringify(orderRes.data)}`);
   console.log(`   ✅ Pedido ${orderRes.data.data.orderNumber ?? orderRes.data.data.id} creado (Total: ${orderRes.data.data.total})`);
 
   // Paso 7: Production report
   console.log('\n7️⃣ [GET /api/v1/reports/production] Consultando resumen de producción...');
   const prodRes = await request('GET', `/api/v1/reports/production?date=${todayStr}`);
-  if (!prodRes.ok) throw new Error(`Production report falló (${prodRes.status})`);
+  if (!prodRes.ok) throw new Error(`Production report falló (${prodRes.status}): ${JSON.stringify(prodRes.data)}`);
   console.log(`   ✅ Ítems a producir: ${prodRes.data.data.length} platos`);
 
   // Paso 8: Create expense & Financial report
@@ -118,10 +120,10 @@ async function runSmokeTest() {
     payment_method: 'CASH',
     expense_date: todayStr,
   });
-  if (!expRes.ok && expRes.status !== 422) throw new Error(`Create expense falló (${expRes.status})`);
+  if (!expRes.ok && expRes.status !== 422) throw new Error(`Create expense falló (${expRes.status}): ${JSON.stringify(expRes.data)}`);
 
   const reportRes = await request('GET', `/api/v1/reports/result?period=day&date_from=${todayStr}`);
-  if (!reportRes.ok) throw new Error(`Financial report falló (${reportRes.status})`);
+  if (!reportRes.ok) throw new Error(`Financial report falló (${reportRes.status}): ${JSON.stringify(reportRes.data)}`);
   console.log(`   ✅ Resultado financiero hoy: Ventas ${reportRes.data.data.total_sales} BOB - Gastos ${reportRes.data.data.total_expenses} BOB = ${reportRes.data.data.result} BOB`);
 
   // Paso 9: Sync push
@@ -137,7 +139,7 @@ async function runSmokeTest() {
         payload: {
           customer_name: 'Cliente Offline Sync',
           payment_method: 'QR',
-          items: [{ dish_id: testDishId, quantity: 1 }],
+          items: [{ dish_id: createdDishId, quantity: 1 }],
         },
         client_timestamp: new Date().toISOString(),
       },

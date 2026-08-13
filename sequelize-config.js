@@ -22,9 +22,14 @@ const sslOptions = {
   },
 };
 
+const isSupabase = Boolean(
+  process.env.DATABASE_URL && process.env.DATABASE_URL.includes('supabase'),
+);
+
 module.exports = {
   development: {
     ...baseOptions,
+    ...(isSupabase ? sslOptions : {}),
     url: process.env.DATABASE_URL,
     logging: console.log,
   },

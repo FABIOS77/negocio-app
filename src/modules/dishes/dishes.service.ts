@@ -70,7 +70,7 @@ export async function createDish(input: CreateDishInput): Promise<DishDTO> {
     description: input.description ?? null,
     price: String(input.price),
     imageUrl: input.imageUrl ?? null,
-    active: input.active,
+    active: input.active ?? true,
   });
   return toDTO(dish);
 }
