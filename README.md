@@ -86,9 +86,31 @@ npm run build
 
 ---
 
+---
+
+## 🔒 Herramientas de Producción & Mantenimiento
+
+### 1. Inventario de Datos (Solo Lectura)
+```bash
+npm run db:inventory
+```
+Genera un reporte consolidado del conteo de filas en las 11 tablas del sistema para auditar datos antes de mantenimiento o limpieza.
+
+### 2. Bootstrap del Administrador Inicial de Producción
+Herramienta CLI segura para crear la primera cuenta administradora real en producción sin exponer credenciales:
+```bash
+BOOTSTRAP_ADMIN_NAME="Nombre Admin" \
+BOOTSTRAP_ADMIN_EMAIL="admin@minegocio.com" \
+BOOTSTRAP_ADMIN_PASSWORD="PasswordSeguro123!" \
+BOOTSTRAP_CONFIRM="true" \
+npm run db:bootstrap-admin
+```
+
+---
+
 ## 📦 Despliegue en Render + Supabase
 
-Consultar la guía detallada en [docs/deployment.md](docs/deployment.md).
+Consultar la guía detallada de despliegue, copias de seguridad (backup) y transición a producción en [docs/deployment.md](docs/deployment.md).
 
 ### Comandos de Render:
 - **Build Command**: `npm run build`

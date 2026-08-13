@@ -105,3 +105,74 @@ Una vez que Render marque el servicio como **Live**, ejecutar las siguientes her
    ```bash
    npx tsx scripts/smoke-test.ts https://katering-grecia-app.onrender.com
    ```
+
+---
+
+## 6. Procedimiento de Respaldo (Backup) & Restauración de Base de Datos
+
+### Generación de Copia de Seguridad Completa (`pg_dump`)
+Antes de realizar cualquier mantenimiento o limpieza en la base de datos de Supabase, ejecute un respaldo completo que incluya estructura, datos, secuencias, índices y restricciones:
+
+```bash
+pg_dump "$DATABASE_URL" --format=custom --file=backup_katering_$(date +%Y%m%d_%H%M%S).dump
+```
+
+> [!CAUTION]
+> Los archivos de backup `.dump` o `.sql` contienen datos operativos y nunca deben subirse al repositorio Git.
+
+### Restauración de Copia de Seguridad (`pg_restore`)
+Para restaurar el respaldo en una base de datos de emergencia o entorno de recuperación:
+
+```bash
+pg_restore --clean --if-exists --dbname="$DATABASE_URL" backup_katering_YYYYMMDD_HHMMSS.dump
+```
+
+---
+
+## 7. Herramientas CLI de Producción
+
+### Bootstrap del Administrador Inicial Real
+Para crear el usuario administrador inicial en una base de producción recién aprovisionada:
+
+```bash
+BOOTSTRAP_ADMIN_NAME="Administrador Principal" \
+BOOTSTRAP_ADMIN_EMAIL="admin@negociokatering.com" \
+BOOTSTRAP_ADMIN_PASSWORD="PasswordSeguro123!" \
+BOOTSTRAP_CONFIRM="true" \
+npm run db:bootstrap-admin
+```
+
+### Inventario de Datos (Solo Lectura)
+Para inspeccionar el volumen de filas por tabla antes de un mantenimiento:
+```bash
+npm run db:inventory
+```
+
+---
+
+## 8. Plan Transaccional de Limpieza para Transición a Producción
+
+> [!WARNING]
+> La limpieza borra de forma irreversible los datos de prueba respetando la integridad referencial. **No ejecutar sin confirmación explícita y backup previo.**
+
+### Orden de Limpieza por Dependencias:
+1. `order_items` (Depende de `orders`)
+2. `orders`
+3. `daily_menu_dishes` (Depende de `daily_menus` y `dishes`)
+4. `daily_menus`
+5. `expenses` (Depende de `expense_categories`)
+6. `sync_operations`
+7. `change_log` (Reinicia el cursor incremental para el cliente móvil)
+8. `dishes`
+9. `expense_categories` (Opcional: mantener categorías base creadas)
+10. `refresh_tokens` (Depende de `users`)
+11. `users` (Se elimina usuario dev y se ejecuta el `db:bootstrap-admin`)
+
+---
+
+## 9. Evolución Futura de Exportación Excel (V2)
+
+Para volúmenes masivos de datos en etapas futuras de crecimiento, se consideran las siguientes optimizaciones de arquitectura:
+- **Procesamiento Asíncrono**: Cola de trabajos en background (ej. BullMQ / Redis) que notifique vía WebSocket o Push al completar la generación del archivo `.xlsx`.
+- **Integración Nube**: Almacenamiento en Google Drive / Supabase Storage con URLs firmadas temporales para descarga.
+- **Google Apps Script**: Sincronización automática de hojas de cálculo de Google Sheets para reportes ejecutivos en tiempo real.
