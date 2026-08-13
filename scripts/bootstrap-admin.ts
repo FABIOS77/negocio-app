@@ -123,7 +123,11 @@ if (process.argv[1] && process.argv[1].includes('bootstrap-admin')) {
       console.log(`   - Nombre: ${result.name}`);
       console.log(`   - Email: ${result.email}`);
       console.log(`   - Estado: ${result.active ? 'ACTIVO' : 'INACTIVO'}`);
-      console.log(`   - Fecha Creación: ${result.createdAt.toISOString()}`);
+      const createdAtIso =
+        result.createdAt instanceof Date
+          ? result.createdAt.toISOString()
+          : new Date(result.createdAt).toISOString();
+      console.log(`   - Fecha Creación: ${createdAtIso}`);
       console.log('\n🔐 Recuerde resguardar las credenciales en su gestor de contraseñas.');
       process.exit(0);
     } catch (err: unknown) {
