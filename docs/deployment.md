@@ -67,17 +67,41 @@ npx sequelize-cli db:migrate:status --env production
 
 ---
 
-## 5. Verificación del Despliegue (Smoke Test)
+## 5. Verificación del Despliegue y Pruebas Remotas
 
-Una vez que Render marque el servicio como **Live**, ejecutar los health checks:
+Servicio Render activo en: `https://katering-grecia-app.onrender.com`
+
+Una vez que Render marque el servicio como **Live**, ejecutar las siguientes herramientas de verificación:
 
 1. **HTTP Health Check**:
-   `GET https://negocio-katering-backend.onrender.com/health` -> HTTP 200 `{ "success": true, "data": { "status": "ok" } }`
+   `GET https://katering-grecia-app.onrender.com/health` -> HTTP 200 `{ "success": true, "data": { "status": "ok" } }`
 
 2. **Database Health Check**:
-   `GET https://negocio-katering-backend.onrender.com/health/db` -> HTTP 200 `{ "success": true, "data": { "status": "ok", "database": "connected" } }`
+   `GET https://katering-grecia-app.onrender.com/health/db` -> HTTP 200 `{ "success": true, "data": { "status": "ok", "database": "connected" } }`
 
-3. **Smoke Test Completo**:
+3. **Pruebas de Solo Lectura (No Destructivas)**:
    ```bash
-   npx tsx scripts/smoke-test.ts https://negocio-katering-backend.onrender.com
+   npx tsx scripts/test-remote.ts https://katering-grecia-app.onrender.com
+   ```
+
+4. **Pruebas de Autenticación**:
+   ```bash
+   npx tsx scripts/test-remote-auth.ts https://katering-grecia-app.onrender.com
+   ```
+
+5. **Pruebas de Sincronización Multi-Dispositivo**:
+   ```bash
+   npx tsx scripts/test-remote-sync.ts https://katering-grecia-app.onrender.com
+   ```
+
+6. **Pruebas de Reportes y Cálculos Financieros**:
+   ```bash
+   npx tsx scripts/test-remote-reports.ts https://katering-grecia-app.onrender.com
+   ```
+
+7. **Smoke Test Mutativo Completo (10 pasos)**:
+   > [!WARNING]
+   > El smoke test completo inserta datos de prueba (platos, pedidos, gastos). Utilizar únicamente durante fases de desarrollo/hardening previa a la salida a producción oficial.
+   ```bash
+   npx tsx scripts/smoke-test.ts https://katering-grecia-app.onrender.com
    ```
