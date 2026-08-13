@@ -28,6 +28,9 @@ import { sequelize } from './database/sequelize';
 
 export const app = express();
 
+// Configurar trust proxy para Render / proxies inversos (necesario para express-rate-limit)
+app.set('trust proxy', 1);
+
 // ─── Seguridad ────────────────────────────────────────────────────────────────
 
 // Cabeceras de seguridad HTTP
