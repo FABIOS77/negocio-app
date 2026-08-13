@@ -18,12 +18,20 @@ import {
   reportQuerySchema,
   topDishesQuerySchema,
   productionQuerySchema,
+  exportQuerySchema,
 } from './reports.schema';
 import * as reportsController from './reports.controller';
 
 const router = Router();
 
 router.use(requireAuth);
+
+// GET /api/v1/reports/export?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
+router.get(
+  '/export',
+  validate({ query: exportQuerySchema }),
+  reportsController.exportExcelReport,
+);
 
 // GET /api/v1/reports/sales?period=day|week|month|custom&date_from=YYYY-MM-DD&date_to=YYYY-MM-DD
 router.get('/sales', validate({ query: reportQuerySchema }), reportsController.getSalesReport);

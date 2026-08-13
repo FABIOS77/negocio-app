@@ -804,18 +804,23 @@ paths:
         "401": {description: No autenticado}
   /reports/export:
     get:
-      summary: Export Excel report
+      summary: Exportar reporte consolidado en formato Excel (.xlsx) con 4 hojas (Resumen, Pedidos, Gastos, Platos)
       tags: [reports]
       parameters:
-        - {in: query, name: date_from, schema: {type: string, format: date}}
-        - {in: query, name: date_to, schema: {type: string, format: date}}
-        - {in: query, name: sections, schema: {type: string}}
+        - {in: query, name: date_from, required: true, schema: {type: string, format: date}, description: 'Fecha inicio YYYY-MM-DD'}
+        - {in: query, name: date_to, required: true, schema: {type: string, format: date}, description: 'Fecha fin YYYY-MM-DD'}
       responses:
         "200":
-          description: Excel file
+          description: Archivo Excel .xlsx generado exitosamente
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+              example: 'attachment; filename="reporte_2026-08-01_2026-08-31.xlsx"'
           content:
             application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
               schema: {type: string, format: binary}
+        "400": {description: Rango de fechas inválido o faltante}
+        "401": {description: No autenticado}
   /sync/push:
     post:
       summary: Enviar operaciones offline al servidor (Push atómico e idempotente)

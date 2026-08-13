@@ -96,6 +96,7 @@ Todas las respuestas exitosas y de error siguen el contrato estandarizado:
 - `GET /reports/expenses?period=day|week|month|custom`: Resumen de gastos por categoría y método de pago.
 - `GET /reports/result?period=day|week|month|custom`: Resultado financiero neto (Ventas - Gastos).
 - `GET /reports/top-dishes?period=day|week|month|custom`: Ranking de platos más vendidos.
+- `GET /reports/export?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`: Exportar reporte consolidado en archivo Excel `.xlsx` (contiene 4 hojas: Resumen, Pedidos, Gastos, Platos).
 
 ---
 
