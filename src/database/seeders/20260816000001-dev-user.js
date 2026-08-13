@@ -5,6 +5,11 @@ const argon2 = require('argon2');
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface) {
+    if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_PRODUCTION_SEED) {
+      console.log('Skipping dev-user seeder in production environment.');
+      return;
+    }
+
     // Hash pre-generado con argon2id para la contraseña por defecto: Password123!
     const passwordHash = await argon2.hash('Password123!', {
       type: argon2.argon2id,

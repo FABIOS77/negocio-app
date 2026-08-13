@@ -3,6 +3,11 @@
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up(queryInterface) {
+    if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_PRODUCTION_SEED) {
+      console.log('Skipping dishes seeder in production environment.');
+      return;
+    }
+
     const now = new Date();
     const sampleDishes = [
       {

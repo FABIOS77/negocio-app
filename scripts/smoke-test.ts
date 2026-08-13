@@ -12,7 +12,11 @@ import crypto from 'crypto';
 
 import { toLocalDate } from '../src/utils/timezone';
 
-const BASE_URL = process.argv[2] || process.env['API_URL'] || 'http://localhost:3000';
+const BASE_URL =
+  process.argv[2] ||
+  process.env['API_BASE_URL'] ||
+  process.env['API_URL'] ||
+  'http://localhost:3000';
 
 async function runSmokeTest() {
   console.log(`🚀 Iniciando Smoke Test contra: ${BASE_URL}\n`);
