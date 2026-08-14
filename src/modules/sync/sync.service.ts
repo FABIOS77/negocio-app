@@ -20,6 +20,7 @@ import { ExpenseCategory } from '../expenses/expense-category.model';
 import { Expense } from '../expenses/expense.model';
 import * as ordersService from '../orders/orders.service';
 import * as expensesService from '../expenses/expenses.service';
+import { NotFoundError } from '../../utils/errors';
 
 import type { PushRequestInput, PullQueryInput, SyncOperationInput } from './sync.schema';
 import type { SyncOpType, SyncStatus } from './sync-operation.model';
@@ -218,42 +219,93 @@ async function processSingleOperation(
   // 3. Ejecutar dentro de una transacción por operación
   try {
     const result = await sequelize.transaction(async (t) => {
+      let effectiveOp = op.operation;
+
       // ─── Control de Concurrencia Optimista para UPDATE y DELETE ───────────────
       if (op.operation === 'UPDATE' || op.operation === 'DELETE') {
         const current = await fetchEntitySnapshot(op.entity_type, op.entity_id);
 
         if (!current) {
-          throw new Error(`Entity ${op.entity_type}:${op.entity_id} not found for ${op.operation}`);
-        }
+          if (op.operation === 'DELETE') {
+            // IDEMPOTENT DELETE: La entidad no existe en el servidor.
+            // El objetivo de DELETE ya está cumplido. Retornar PROCESSED.
+            const resultingData = { id: op.entity_id, deleted: true };
+            const resultingVersion = (op.base_version ?? 1) + 1;
 
-        const expectedVersion = op.base_version ?? 0;
-        if (current.version !== expectedVersion) {
-          // CONFLICT: versión del cliente desactualizada
-          const conflictData = current.entity;
-          await syncRepo.recordSyncOperation(
-            {
-              operationId: op.operation_id,
-              entityType: op.entity_type,
-              entityId: op.entity_id,
-              operation: op.operation,
-              payload: op.payload,
-              clientTimestamp: new Date(op.client_timestamp),
-              baseVersion: op.base_version ?? null,
-              status: 'CONFLICT',
-              serverVersion: current.version,
-              resultData: { conflict: true, server_version: current.version, server_data: conflictData },
-              processedBy: userId,
-              processedAt: new Date(),
-            },
-            t,
-          );
+            const changeEntry = await syncRepo.recordChangeLog(
+              {
+                entityType: op.entity_type,
+                entityId: op.entity_id,
+                operation: 'DELETE',
+                snapshot: resultingData,
+                version: resultingVersion,
+              },
+              t,
+            );
 
-          return {
-            operation_id: op.operation_id,
-            status: 'CONFLICT' as SyncStatus,
-            server_version: current.version,
-            data: { conflict: true, server_version: current.version, server_data: conflictData },
-          };
+            const serverChangeId = parseInt(changeEntry.serverChangeId, 10);
+
+            await syncRepo.recordSyncOperation(
+              {
+                operationId: op.operation_id,
+                entityType: op.entity_type,
+                entityId: op.entity_id,
+                operation: op.operation,
+                payload: op.payload,
+                clientTimestamp: new Date(op.client_timestamp),
+                baseVersion: op.base_version ?? null,
+                status: 'PROCESSED',
+                serverVersion: resultingVersion,
+                serverChangeId: changeEntry.serverChangeId,
+                resultData: resultingData,
+                processedBy: userId,
+                processedAt: new Date(),
+              },
+              t,
+            );
+
+            return {
+              operation_id: op.operation_id,
+              status: 'PROCESSED' as SyncStatus,
+              server_version: resultingVersion,
+              server_change_id: serverChangeId,
+              data: resultingData,
+            };
+          } else if (op.operation === 'UPDATE') {
+            // UPSERT FALLBACK: La entidad no existe en el servidor para UPDATE.
+            // Redirigir la ejecución al flujo de CREATE.
+            effectiveOp = 'CREATE';
+          }
+        } else {
+          const expectedVersion = op.base_version ?? 0;
+          if (current.version !== expectedVersion) {
+            // CONFLICT: versión del cliente desactualizada
+            const conflictData = current.entity;
+            await syncRepo.recordSyncOperation(
+              {
+                operationId: op.operation_id,
+                entityType: op.entity_type,
+                entityId: op.entity_id,
+                operation: op.operation,
+                payload: op.payload,
+                clientTimestamp: new Date(op.client_timestamp),
+                baseVersion: op.base_version ?? null,
+                status: 'CONFLICT',
+                serverVersion: current.version,
+                resultData: { conflict: true, server_version: current.version, server_data: conflictData },
+                processedBy: userId,
+                processedAt: new Date(),
+              },
+              t,
+            );
+
+            return {
+              operation_id: op.operation_id,
+              status: 'CONFLICT' as SyncStatus,
+              server_version: current.version,
+              data: { conflict: true, server_version: current.version, server_data: conflictData },
+            };
+          }
         }
       }
 
@@ -265,7 +317,7 @@ async function processSingleOperation(
 
       switch (op.entity_type) {
         case 'order': {
-          if (op.operation === 'CREATE') {
+          if (effectiveOp === 'CREATE') {
             const { order } = await ordersService.createOrder(
               {
                 id: op.entity_id,
@@ -276,34 +328,77 @@ async function processSingleOperation(
             );
             resultingData = order;
             resultingVersion = order.version;
-          } else if (op.operation === 'UPDATE') {
+          } else if (effectiveOp === 'UPDATE') {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const statusPayload = (cleanPayload as any).status;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if (statusPayload && !(cleanPayload as any).items && !(cleanPayload as any).customer_name) {
-              const updated = await ordersService.changeStatus(op.entity_id, { status: statusPayload });
-              resultingData = updated;
-              resultingVersion = updated.version;
+              try {
+                const updated = await ordersService.changeStatus(op.entity_id, { status: statusPayload });
+                resultingData = updated;
+                resultingVersion = updated.version;
+              } catch (err) {
+                if (err instanceof NotFoundError || (err as Error).name === 'NotFoundError') {
+                  const { order } = await ordersService.createOrder(
+                    {
+                      id: op.entity_id,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      ...(cleanPayload as any),
+                    },
+                    userId,
+                  );
+                  resultingData = order;
+                  resultingVersion = order.version;
+                } else {
+                  throw err;
+                }
+              }
             } else {
-              const updated = await ordersService.updateOrder(
-                op.entity_id,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                cleanPayload as any,
-              );
-              resultingData = updated;
-              resultingVersion = updated.version;
+              try {
+                const updated = await ordersService.updateOrder(
+                  op.entity_id,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  cleanPayload as any,
+                );
+                resultingData = updated;
+                resultingVersion = updated.version;
+              } catch (err) {
+                if (err instanceof NotFoundError || (err as Error).name === 'NotFoundError') {
+                  const { order } = await ordersService.createOrder(
+                    {
+                      id: op.entity_id,
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      ...(cleanPayload as any),
+                    },
+                    userId,
+                  );
+                  resultingData = order;
+                  resultingVersion = order.version;
+                } else {
+                  throw err;
+                }
+              }
             }
-          } else if (op.operation === 'DELETE') {
-            await ordersService.deleteOrder(op.entity_id);
-            const deletedOrder = await Order.findByPk(op.entity_id, { paranoid: false, transaction: t });
-            resultingData = deletedOrder ? deletedOrder.toJSON() : { id: op.entity_id, deleted: true };
-            resultingVersion = (deletedOrder?.version ?? (op.base_version ?? 1)) + 1;
+          } else if (effectiveOp === 'DELETE') {
+            try {
+              await ordersService.deleteOrder(op.entity_id);
+              const deletedOrder = await Order.findByPk(op.entity_id, { paranoid: false, transaction: t });
+              resultingData = deletedOrder ? deletedOrder.toJSON() : { id: op.entity_id, deleted: true };
+              resultingVersion = (deletedOrder?.version ?? (op.base_version ?? 1)) + 1;
+            } catch (err) {
+              if (err instanceof NotFoundError || (err as Error).name === 'NotFoundError') {
+                resultingData = { id: op.entity_id, deleted: true };
+                resultingVersion = (op.base_version ?? 1) + 1;
+              } else {
+                throw err;
+              }
+            }
           }
           break;
         }
 
         case 'expense': {
-          if (op.operation === 'CREATE') {
+          if (effectiveOp === 'CREATE') {
             const { expense } = await expensesService.createExpense(
               {
                 id: op.entity_id,
@@ -314,27 +409,54 @@ async function processSingleOperation(
             );
             resultingData = expense;
             resultingVersion = expense.version;
-          } else if (op.operation === 'UPDATE') {
-            const updated = await expensesService.updateExpense(
-              op.entity_id,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              cleanPayload as any,
-            );
-            resultingData = updated;
-            resultingVersion = updated.version;
-          } else if (op.operation === 'DELETE') {
-            await expensesService.deleteExpense(op.entity_id);
-            const deletedExp = await Expense.findByPk(op.entity_id, { paranoid: false, transaction: t });
-            resultingData = deletedExp ? deletedExp.toJSON() : { id: op.entity_id, deleted: true };
-            resultingVersion = (deletedExp?.version ?? (op.base_version ?? 1)) + 1;
+          } else if (effectiveOp === 'UPDATE') {
+            try {
+              const updated = await expensesService.updateExpense(
+                op.entity_id,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                cleanPayload as any,
+              );
+              resultingData = updated;
+              resultingVersion = updated.version;
+            } catch (err) {
+              if (err instanceof NotFoundError || (err as Error).name === 'NotFoundError') {
+                const { expense } = await expensesService.createExpense(
+                  {
+                    id: op.entity_id,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    ...(cleanPayload as any),
+                  },
+                  userId,
+                );
+                resultingData = expense;
+                resultingVersion = expense.version;
+              } else {
+                throw err;
+              }
+            }
+          } else if (effectiveOp === 'DELETE') {
+            try {
+              await expensesService.deleteExpense(op.entity_id);
+              const deletedExp = await Expense.findByPk(op.entity_id, { paranoid: false, transaction: t });
+              resultingData = deletedExp ? deletedExp.toJSON() : { id: op.entity_id, deleted: true };
+              resultingVersion = (deletedExp?.version ?? (op.base_version ?? 1)) + 1;
+            } catch (err) {
+              if (err instanceof NotFoundError || (err as Error).name === 'NotFoundError') {
+                resultingData = { id: op.entity_id, deleted: true };
+                resultingVersion = (op.base_version ?? 1) + 1;
+              } else {
+                throw err;
+              }
+            }
           }
           break;
         }
 
         case 'dish': {
-          if (op.operation === 'CREATE') {
-            const existingDish = await Dish.findByPk(op.entity_id, { transaction: t });
+          if (effectiveOp === 'CREATE') {
+            const existingDish = await Dish.findByPk(op.entity_id, { transaction: t, paranoid: false });
             if (existingDish) {
+              await existingDish.update({ ...cleanPayload, deletedAt: null, version: existingDish.version + 1 }, { transaction: t });
               resultingData = existingDish.toJSON();
               resultingVersion = existingDish.version;
             } else {
@@ -349,26 +471,41 @@ async function processSingleOperation(
               resultingData = dish.toJSON();
               resultingVersion = dish.version;
             }
-          } else if (op.operation === 'UPDATE') {
+          } else if (effectiveOp === 'UPDATE') {
             const dish = await Dish.findByPk(op.entity_id, { transaction: t });
-            if (!dish) throw new Error(`Dish ${op.entity_id} not found`);
-            await dish.update({ ...cleanPayload, version: dish.version + 1 }, { transaction: t });
-            resultingData = dish.toJSON();
-            resultingVersion = dish.version;
-          } else if (op.operation === 'DELETE') {
+            if (!dish) {
+              const newDish = await Dish.create(
+                {
+                  id: op.entity_id,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  ...(cleanPayload as any),
+                },
+                { transaction: t },
+              );
+              resultingData = newDish.toJSON();
+              resultingVersion = newDish.version;
+            } else {
+              await dish.update({ ...cleanPayload, version: dish.version + 1 }, { transaction: t });
+              resultingData = dish.toJSON();
+              resultingVersion = dish.version;
+            }
+          } else if (effectiveOp === 'DELETE') {
             const dish = await Dish.findByPk(op.entity_id, { transaction: t });
             if (dish) {
               await dish.destroy({ transaction: t });
               await dish.update({ version: dish.version + 1 }, { transaction: t });
               resultingData = dish.toJSON();
               resultingVersion = dish.version;
+            } else {
+              resultingData = { id: op.entity_id, deleted: true };
+              resultingVersion = (op.base_version ?? 1) + 1;
             }
           }
           break;
         }
 
         case 'daily_menu': {
-          if (op.operation === 'CREATE' || op.operation === 'UPDATE') {
+          if (effectiveOp === 'CREATE' || effectiveOp === 'UPDATE') {
             const menuDate = (op.payload as { menuDate?: string; menu_date?: string }).menuDate ??
               (op.payload as { menu_date?: string }).menu_date ?? '2026-08-12';
             const dishIds = (op.payload as { dishIds?: string[]; dish_ids?: string[] }).dishIds ??
@@ -399,12 +536,23 @@ async function processSingleOperation(
             });
             resultingData = reloadedMenu!.toJSON();
             resultingVersion = menu.version;
+          } else if (effectiveOp === 'DELETE') {
+            const menu = await DailyMenu.findByPk(op.entity_id, { transaction: t });
+            if (menu) {
+              await DailyMenuDish.destroy({ where: { dailyMenuId: menu.id }, transaction: t });
+              await menu.destroy({ transaction: t });
+              resultingData = { id: op.entity_id, deleted: true };
+              resultingVersion = menu.version + 1;
+            } else {
+              resultingData = { id: op.entity_id, deleted: true };
+              resultingVersion = (op.base_version ?? 1) + 1;
+            }
           }
           break;
         }
 
         case 'expense_category': {
-          if (op.operation === 'CREATE') {
+          if (effectiveOp === 'CREATE') {
             const existingCat = await ExpenseCategory.findByPk(op.entity_id, { transaction: t });
             if (existingCat) {
               resultingData = existingCat.toJSON();
@@ -421,16 +569,27 @@ async function processSingleOperation(
               resultingData = cat.toJSON();
               resultingVersion = cat.version;
             }
-          } else if (op.operation === 'UPDATE') {
+          } else if (effectiveOp === 'UPDATE') {
             const cat = await ExpenseCategory.findByPk(op.entity_id, { transaction: t });
-            if (!cat) throw new Error(`ExpenseCategory ${op.entity_id} not found`);
-            await cat.update({ ...cleanPayload, version: cat.version + 1 }, { transaction: t });
-            resultingData = cat.toJSON();
-            resultingVersion = cat.version;
-          } else if (op.operation === 'DELETE') {
+            if (!cat) {
+              const newCat = await ExpenseCategory.create(
+                {
+                  id: op.entity_id,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  ...(cleanPayload as any),
+                },
+                { transaction: t },
+              );
+              resultingData = newCat.toJSON();
+              resultingVersion = newCat.version;
+            } else {
+              await cat.update({ ...cleanPayload, version: cat.version + 1 }, { transaction: t });
+              resultingData = cat.toJSON();
+              resultingVersion = cat.version;
+            }
+          } else if (effectiveOp === 'DELETE') {
             const cat = await ExpenseCategory.findByPk(op.entity_id, { transaction: t });
             if (cat) {
-              // Si tiene gastos históricos, inactivar en lugar de borrar físicamente
               const expCount = await Expense.count({ where: { categoryId: cat.id }, paranoid: false, transaction: t });
               if (expCount > 0) {
                 await cat.update({ active: false, version: cat.version + 1 }, { transaction: t });
@@ -439,6 +598,9 @@ async function processSingleOperation(
               }
               resultingData = cat.toJSON();
               resultingVersion = cat.version;
+            } else {
+              resultingData = { id: op.entity_id, deleted: true };
+              resultingVersion = (op.base_version ?? 1) + 1;
             }
           }
           break;

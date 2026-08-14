@@ -268,6 +268,71 @@ describe('POST /api/v1/sync/push', () => {
     expect(res.body.data.results[0].error_code).toBe('USER_OFFLINE_CREATE_FORBIDDEN');
   });
 
+  it('should process DELETE idempotently when entity does not exist on server', async () => {
+    vi.mocked(expensesService.getExpense).mockRejectedValue(new Error('Expense not found'));
+
+    const res = await request(app)
+      .post('/api/v1/sync/push')
+      .set(AUTH_HEADER)
+      .send({
+        operations: [
+          {
+            operation_id: OP_UUID_1,
+            entity_type: 'expense',
+            entity_id: ENTITY_UUID_1,
+            operation: 'DELETE',
+            payload: {},
+            client_timestamp: '2026-08-14T12:00:00.000Z',
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.processed).toBe(1);
+    expect(res.body.data.results[0].status).toBe('PROCESSED');
+    expect(res.body.data.results[0].data.deleted).toBe(true);
+  });
+
+  it('should fallback UPDATE to CREATE (Upsert) when entity does not exist on server', async () => {
+    vi.mocked(expensesService.getExpense).mockRejectedValue(new Error('Expense not found'));
+    vi.mocked(expensesService.createExpense).mockResolvedValue({
+      expense: {
+        id: ENTITY_UUID_1,
+        description: 'Gasto Upsert',
+        amount: 80,
+        categoryId: 'cat-1',
+        paymentMethod: 'CASH',
+        expenseDate: '2026-08-14',
+        createdBy: USER_UUID,
+        version: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      created: true,
+    } as never);
+
+    const res = await request(app)
+      .post('/api/v1/sync/push')
+      .set(AUTH_HEADER)
+      .send({
+        operations: [
+          {
+            operation_id: OP_UUID_1,
+            entity_type: 'expense',
+            entity_id: ENTITY_UUID_1,
+            operation: 'UPDATE',
+            payload: { description: 'Gasto Upsert', amount: 80, category_id: 'cat-1', payment_method: 'CASH' },
+            client_timestamp: '2026-08-14T12:00:00.000Z',
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.processed).toBe(1);
+    expect(res.body.data.results[0].status).toBe('PROCESSED');
+    expect(expensesService.createExpense).toHaveBeenCalled();
+  });
+
   it('should return 401 without authorization token', async () => {
     const res = await request(app).post('/api/v1/sync/push').send({ operations: [] });
     expect(res.status).toBe(401);
