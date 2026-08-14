@@ -27,8 +27,8 @@ export const syncOperationInputSchema = z.object({
     error: 'operation must be CREATE, UPDATE or DELETE',
   }),
   payload: z.record(z.string(), z.unknown()),
-  client_timestamp: z.string().datetime({ offset: true }),
-  base_version: z.number().int().nonnegative().optional(),
+  client_timestamp: z.coerce.date().transform((d) => d.toISOString()),
+  base_version: z.coerce.number().int().nonnegative().optional(),
 });
 
 export const pushRequestSchema = z.object({

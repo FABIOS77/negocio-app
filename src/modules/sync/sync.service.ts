@@ -51,7 +51,89 @@ export interface PullResponseDTO {
   has_more: boolean;
 }
 
-// ─── Auxiliary Helpers ────────────────────────────────────────────────────────
+// ─── Auxiliary Helpers & Sanitization ─────────────────────────────────────────
+
+function sanitizeDishPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  if (payload.name !== undefined) sanitized.name = payload.name;
+  if (payload.description !== undefined) sanitized.description = payload.description ?? null;
+  if (payload.price !== undefined) sanitized.price = payload.price;
+  if (payload.imageUrl !== undefined || payload.image_url !== undefined) {
+    sanitized.imageUrl = payload.imageUrl ?? payload.image_url ?? null;
+  }
+  if (payload.active !== undefined) sanitized.active = payload.active;
+  return sanitized;
+}
+
+function sanitizeOrderPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  const customerName = payload.customer_name ?? payload.customerName;
+  if (customerName !== undefined) sanitized.customer_name = customerName;
+
+  const locationText = payload.location_text ?? payload.locationText;
+  if (locationText !== undefined) sanitized.location_text = locationText ?? null;
+
+  const paymentMethod = payload.payment_method ?? payload.paymentMethod;
+  if (paymentMethod !== undefined) sanitized.payment_method = paymentMethod;
+
+  const orderedAt = payload.ordered_at ?? payload.orderedAt;
+  if (orderedAt !== undefined) sanitized.ordered_at = orderedAt;
+
+  const rawItems = payload.items;
+  if (Array.isArray(rawItems)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sanitized.items = rawItems.map((item: any) => ({
+      dish_id: item.dish_id ?? item.dishId,
+      quantity: item.quantity,
+    }));
+  }
+
+  const status = payload.status;
+  if (status !== undefined) sanitized.status = status;
+
+  return sanitized;
+}
+
+function sanitizeExpensePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  if (payload.description !== undefined) sanitized.description = payload.description;
+  if (payload.amount !== undefined) sanitized.amount = payload.amount;
+
+  const categoryId = payload.category_id ?? payload.categoryId;
+  if (categoryId !== undefined) sanitized.category_id = categoryId;
+
+  const paymentMethod = payload.payment_method ?? payload.paymentMethod;
+  if (paymentMethod !== undefined) sanitized.payment_method = paymentMethod;
+
+  const expenseDate = payload.expense_date ?? payload.expenseDate;
+  if (expenseDate !== undefined) sanitized.expense_date = expenseDate;
+
+  return sanitized;
+}
+
+function sanitizeExpenseCategoryPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  if (payload.name !== undefined) sanitized.name = payload.name;
+  if (payload.description !== undefined) sanitized.description = payload.description ?? null;
+  if (payload.active !== undefined) sanitized.active = payload.active;
+  return sanitized;
+}
+
+function sanitizePayload(entityType: string, payload: Record<string, unknown>): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object') return {};
+  switch (entityType) {
+    case 'dish':
+      return sanitizeDishPayload(payload);
+    case 'order':
+      return sanitizeOrderPayload(payload);
+    case 'expense':
+      return sanitizeExpensePayload(payload);
+    case 'expense_category':
+      return sanitizeExpenseCategoryPayload(payload);
+    default:
+      return payload;
+  }
+}
 
 /**
  * Obtiene el snapshot actual de cualquier entidad sincronizable.
@@ -178,6 +260,7 @@ async function processSingleOperation(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let resultingData: Record<string, any> = {};
       let resultingVersion = 1;
+      const cleanPayload = sanitizePayload(op.entity_type, op.payload);
 
       switch (op.entity_type) {
         case 'order': {
@@ -186,7 +269,7 @@ async function processSingleOperation(
               {
                 id: op.entity_id,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ...(op.payload as any),
+                ...(cleanPayload as any),
               },
               userId,
             );
@@ -195,7 +278,7 @@ async function processSingleOperation(
           } else if (op.operation === 'UPDATE') {
             // Verificar si el payload solicita cambio de status a CANCELLED o DELIVERED
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const statusPayload = (op.payload as any).status;
+            const statusPayload = (cleanPayload as any).status;
             if (statusPayload) {
               const updated = await ordersService.changeStatus(op.entity_id, { status: statusPayload });
               resultingData = updated;
@@ -215,7 +298,7 @@ async function processSingleOperation(
               {
                 id: op.entity_id,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ...(op.payload as any),
+                ...(cleanPayload as any),
               },
               userId,
             );
@@ -225,7 +308,7 @@ async function processSingleOperation(
             const updated = await expensesService.updateExpense(
               op.entity_id,
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              op.payload as any,
+              cleanPayload as any,
             );
             resultingData = updated;
             resultingVersion = updated.version;
@@ -249,7 +332,7 @@ async function processSingleOperation(
                 {
                   id: op.entity_id,
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  ...(op.payload as any),
+                  ...(cleanPayload as any),
                 },
                 { transaction: t },
               );
@@ -259,7 +342,7 @@ async function processSingleOperation(
           } else if (op.operation === 'UPDATE') {
             const dish = await Dish.findByPk(op.entity_id, { transaction: t });
             if (!dish) throw new Error(`Dish ${op.entity_id} not found`);
-            await dish.update({ ...op.payload, version: dish.version + 1 }, { transaction: t });
+            await dish.update({ ...cleanPayload, version: dish.version + 1 }, { transaction: t });
             resultingData = dish.toJSON();
             resultingVersion = dish.version;
           } else if (op.operation === 'DELETE') {
@@ -321,7 +404,7 @@ async function processSingleOperation(
                 {
                   id: op.entity_id,
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  ...(op.payload as any),
+                  ...(cleanPayload as any),
                 },
                 { transaction: t },
               );
@@ -331,7 +414,7 @@ async function processSingleOperation(
           } else if (op.operation === 'UPDATE') {
             const cat = await ExpenseCategory.findByPk(op.entity_id, { transaction: t });
             if (!cat) throw new Error(`ExpenseCategory ${op.entity_id} not found`);
-            await cat.update({ ...op.payload, version: cat.version + 1 }, { transaction: t });
+            await cat.update({ ...cleanPayload, version: cat.version + 1 }, { transaction: t });
             resultingData = cat.toJSON();
             resultingVersion = cat.version;
           } else if (op.operation === 'DELETE') {
