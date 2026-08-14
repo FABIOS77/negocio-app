@@ -13,6 +13,7 @@
 import { sequelize } from '../../database/sequelize';
 import * as syncRepo from './sync.repository';
 import { Dish } from '../dishes/dish.model';
+import { Order } from '../orders/order.model';
 import { DailyMenu } from '../daily-menus/daily-menu.model';
 import { DailyMenuDish } from '../daily-menus/daily-menu-dish.model';
 import { ExpenseCategory } from '../expenses/expense-category.model';
@@ -276,18 +277,27 @@ async function processSingleOperation(
             resultingData = order;
             resultingVersion = order.version;
           } else if (op.operation === 'UPDATE') {
-            // Verificar si el payload solicita cambio de status a CANCELLED o DELIVERED
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const statusPayload = (cleanPayload as any).status;
-            if (statusPayload) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (statusPayload && !(cleanPayload as any).items && !(cleanPayload as any).customer_name) {
               const updated = await ordersService.changeStatus(op.entity_id, { status: statusPayload });
               resultingData = updated;
               resultingVersion = updated.version;
             } else {
-              const updated = await ordersService.getOrder(op.entity_id);
+              const updated = await ordersService.updateOrder(
+                op.entity_id,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                cleanPayload as any,
+              );
               resultingData = updated;
               resultingVersion = updated.version;
             }
+          } else if (op.operation === 'DELETE') {
+            await ordersService.deleteOrder(op.entity_id);
+            const deletedOrder = await Order.findByPk(op.entity_id, { paranoid: false, transaction: t });
+            resultingData = deletedOrder ? deletedOrder.toJSON() : { id: op.entity_id, deleted: true };
+            resultingVersion = (deletedOrder?.version ?? (op.base_version ?? 1)) + 1;
           }
           break;
         }

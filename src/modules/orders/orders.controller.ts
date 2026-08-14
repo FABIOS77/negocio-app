@@ -7,7 +7,12 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as ordersService from './orders.service';
 import { sendSuccess } from '../../utils/response';
-import type { CreateOrderInput, OrderQueryInput, UpdateOrderStatusInput } from './orders.schema';
+import type {
+  CreateOrderInput,
+  UpdateOrderInput,
+  OrderQueryInput,
+  UpdateOrderStatusInput,
+} from './orders.schema';
 
 export async function listOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -36,6 +41,27 @@ export async function createOrder(req: Request, res: Response, next: NextFunctio
     );
     // 201 si se creó ahora, 200 si era un retry con UUID existente (idempotencia)
     sendSuccess(res, order, created ? 201 : 200);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const order = await ordersService.updateOrder(
+      req.params['id'] as string,
+      req.body as UpdateOrderInput,
+    );
+    sendSuccess(res, order);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await ordersService.deleteOrder(req.params['id'] as string);
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

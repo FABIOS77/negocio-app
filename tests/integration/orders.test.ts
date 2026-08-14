@@ -63,6 +63,8 @@ vi.mock('../../src/modules/orders/orders.repository', () => ({
   findAll: vi.fn(),
   create: vi.fn(),
   updateStatus: vi.fn(),
+  updateWithItems: vi.fn(),
+  softDelete: vi.fn(),
   countOrdersForDay: vi.fn(),
   findProductionSummary: vi.fn(),
 }));
@@ -686,5 +688,92 @@ describe('POST /api/v1/orders — transaction rollback', () => {
     expect(res.status).toBe(500);
     // El order no existe (rollback implícito)
     expect(ordersRepo.findById).toHaveBeenCalledTimes(1); // solo el check inicial
+  });
+});
+
+// ─── PUT /api/v1/orders/:id ──────────────────────────────────────────────────
+
+describe('PUT /api/v1/orders/:id', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('should update order details and replace items', async () => {
+    vi.mocked(ordersRepo.findByIdRaw).mockResolvedValue(mockOrder as never);
+    vi.mocked(Dish.findAll).mockResolvedValue([mockDish1] as never);
+    vi.mocked(ordersRepo.updateWithItems).mockResolvedValue(mockOrder as never);
+    vi.mocked(ordersRepo.findById).mockResolvedValue({
+      ...mockOrder,
+      customerName: 'Cliente Modificado',
+      total: '40.00',
+    } as never);
+
+    const res = await request(app)
+      .put(`/api/v1/orders/${ORDER_UUID}`)
+      .set(AUTH_HEADER)
+      .send({
+        customer_name: 'Cliente Modificado',
+        items: [{ dish_id: DISH_UUID_1, quantity: 2 }],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.customerName).toBe('Cliente Modificado');
+    expect(res.body.data.total).toBe(40);
+  });
+
+  it('should return 422 when attempting to update an order in DELIVERED or CANCELLED status', async () => {
+    vi.mocked(ordersRepo.findByIdRaw).mockResolvedValue({
+      ...mockOrder,
+      status: 'DELIVERED',
+    } as never);
+
+    const res = await request(app)
+      .put(`/api/v1/orders/${ORDER_UUID}`)
+      .set(AUTH_HEADER)
+      .send({
+        customer_name: 'Nuevo Nombre',
+      });
+
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+  });
+
+  it('should return 404 if order does not exist', async () => {
+    vi.mocked(ordersRepo.findByIdRaw).mockResolvedValue(null);
+
+    const res = await request(app)
+      .put(`/api/v1/orders/${ORDER_UUID}`)
+      .set(AUTH_HEADER)
+      .send({
+        customer_name: 'Nuevo Nombre',
+      });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ─── DELETE /api/v1/orders/:id ───────────────────────────────────────────────
+
+describe('DELETE /api/v1/orders/:id', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('should soft delete an order and return 204 No Content', async () => {
+    vi.mocked(ordersRepo.findByIdRaw).mockResolvedValue(mockOrder as never);
+    vi.mocked(ordersRepo.softDelete).mockResolvedValue();
+
+    const res = await request(app)
+      .delete(`/api/v1/orders/${ORDER_UUID}`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(204);
+    expect(ordersRepo.softDelete).toHaveBeenCalledWith(mockOrder);
+  });
+
+  it('should return 404 for non-existent order', async () => {
+    vi.mocked(ordersRepo.findByIdRaw).mockResolvedValue(null);
+
+    const res = await request(app)
+      .delete(`/api/v1/orders/${ORDER_UUID}`)
+      .set(AUTH_HEADER);
+
+    expect(res.status).toBe(404);
   });
 });

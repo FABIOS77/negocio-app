@@ -25,8 +25,13 @@ import { User } from '../users/user.model';
 import { NotFoundError, BusinessRuleError, ConflictError } from '../../utils/errors';
 import { buildPagination } from '../../utils/response';
 import { dateRangeUTC, toLocalDate } from '../../utils/timezone';
-import type { CreateOrderInput, OrderQueryInput, UpdateOrderStatusInput } from './orders.schema';
-import type { Order } from './order.model';
+import type {
+  CreateOrderInput,
+  UpdateOrderInput,
+  OrderQueryInput,
+  UpdateOrderStatusInput,
+} from './orders.schema';
+import type { Order, OrderAttributes } from './order.model';
 import type { OrderItem } from './order-item.model';
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
@@ -287,4 +292,87 @@ export async function changeStatus(
   const full = await ordersRepo.findById(updated.id);
   if (!full) throw new NotFoundError('Order');
   return orderToDTO(full);
+}
+
+export async function updateOrder(
+  id: string,
+  input: UpdateOrderInput,
+): Promise<OrderDTO> {
+  const order = await ordersRepo.findByIdRaw(id);
+  if (!order) throw new NotFoundError('Order');
+
+  // No permitir edición si el pedido ya está en estado terminal (DELIVERED o CANCELLED)
+  if (order.status !== 'PENDING') {
+    throw new BusinessRuleError(
+      `Cannot update an order in terminal status (${order.status}). Only PENDING orders can be updated.`,
+    );
+  }
+
+  const orderUpdates: Partial<OrderAttributes> = {};
+  if (input.customer_name !== undefined) orderUpdates.customerName = input.customer_name;
+  if (input.location_text !== undefined) orderUpdates.locationText = input.location_text ?? null;
+  if (input.payment_method !== undefined) orderUpdates.paymentMethod = input.payment_method;
+  if (input.ordered_at !== undefined) orderUpdates.orderedAt = new Date(input.ordered_at);
+
+  let newItemsData: ordersRepo.OrderItemData[] | null = null;
+
+  if (input.items && input.items.length > 0) {
+    const dishIds = input.items.map((item) => item.dish_id);
+
+    // Detectar dish_ids duplicados
+    const uniqueDishIds = new Set(dishIds);
+    if (uniqueDishIds.size !== dishIds.length) {
+      throw new BusinessRuleError('A dish cannot appear more than once in the same order');
+    }
+
+    const dishes = await Dish.findAll({
+      where: { id: dishIds },
+      paranoid: false,
+    });
+
+    if (dishes.length !== dishIds.length) {
+      const foundIds = new Set(dishes.map((d) => d.id));
+      const missingIds = dishIds.filter((dishId) => !foundIds.has(dishId));
+      throw new NotFoundError(`Dishes not found: ${missingIds.join(', ')}`);
+    }
+
+    const inactiveDishes = dishes.filter((d) => !d.active || Boolean(d.deletedAt));
+    if (inactiveDishes.length > 0) {
+      const names = inactiveDishes.map((d) => d.name).join(', ');
+      throw new BusinessRuleError(`The following dishes are inactive or deleted: ${names}`);
+    }
+
+    const dishMap = new Map(dishes.map((d) => [d.id, d]));
+    let totalAccumulator = 0;
+
+    newItemsData = input.items.map((inputItem) => {
+      const dish = dishMap.get(inputItem.dish_id)!;
+      const unitPrice = parseFloat(dish.price);
+      const subtotal = round2(unitPrice * inputItem.quantity);
+      totalAccumulator = round2(totalAccumulator + subtotal);
+
+      return {
+        dishId: dish.id,
+        dishNameSnapshot: dish.name,
+        quantity: inputItem.quantity,
+        unitPrice: String(unitPrice),
+        subtotal: String(subtotal),
+      };
+    });
+
+    orderUpdates.total = String(totalAccumulator);
+  }
+
+  await ordersRepo.updateWithItems(order, orderUpdates, newItemsData);
+
+  const full = await ordersRepo.findById(id);
+  if (!full) throw new NotFoundError('Order');
+  return orderToDTO(full);
+}
+
+export async function deleteOrder(id: string): Promise<void> {
+  const order = await ordersRepo.findByIdRaw(id);
+  if (!order) throw new NotFoundError('Order');
+
+  await ordersRepo.softDelete(order);
 }

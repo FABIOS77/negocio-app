@@ -53,6 +53,16 @@ export const updateOrderStatusSchema = z.object({
   }),
 });
 
+// ─── Edición de pedido ────────────────────────────────────────────────────────
+
+export const updateOrderSchema = z.object({
+  customer_name: z.string().min(1, 'customer_name cannot be empty').max(200).optional(),
+  location_text: z.string().max(300).nullish(),
+  payment_method: z.enum(['CASH', 'QR', 'OTHER']).optional(),
+  ordered_at: z.string().datetime({ offset: true }).optional(),
+  items: z.array(orderItemInputSchema).min(1, 'Order must have at least one item').optional(),
+});
+
 // ─── Param :id ────────────────────────────────────────────────────────────────
 
 export const uuidParamSchema = z.object({
@@ -70,6 +80,7 @@ export const productionQuerySchema = z.object({
 // ─── Tipos inferidos ──────────────────────────────────────────────────────────
 
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+export type UpdateOrderInput = z.infer<typeof updateOrderSchema>;
 export type OrderQueryInput = z.infer<typeof orderQuerySchema>;
 export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
 export type ProductionQueryInput = z.infer<typeof productionQuerySchema>;

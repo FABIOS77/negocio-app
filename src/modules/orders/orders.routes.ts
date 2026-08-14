@@ -18,6 +18,7 @@ import { requireAuth } from '../../middlewares/auth.middleware';
 import { validate } from '../../middlewares/validate.middleware';
 import {
   createOrderSchema,
+  updateOrderSchema,
   orderQuerySchema,
   updateOrderStatusSchema,
   uuidParamSchema,
@@ -37,6 +38,20 @@ router.post('/', validate({ body: createOrderSchema }), ordersController.createO
 
 // GET /api/v1/orders/:id
 router.get('/:id', validate({ params: uuidParamSchema }), ordersController.getOrder);
+
+// PUT /api/v1/orders/:id
+router.put(
+  '/:id',
+  validate({ params: uuidParamSchema, body: updateOrderSchema }),
+  ordersController.updateOrder,
+);
+
+// DELETE /api/v1/orders/:id
+router.delete(
+  '/:id',
+  validate({ params: uuidParamSchema }),
+  ordersController.deleteOrder,
+);
 
 // PATCH /api/v1/orders/:id/status
 router.patch(

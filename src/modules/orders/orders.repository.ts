@@ -11,7 +11,7 @@
  */
 import { Op, type Transaction, type WhereOptions } from 'sequelize';
 import { sequelize } from '../../database/sequelize';
-import { Order, type OrderCreationAttributes, type OrderStatus } from './order.model';
+import { Order, type OrderCreationAttributes, type OrderAttributes, type OrderStatus } from './order.model';
 import { OrderItem } from './order-item.model';
 import { Dish } from '../dishes/dish.model';
 
@@ -180,6 +180,69 @@ export async function updateStatus(
     status: newStatus,
     version: order.version + 1,
   });
+}
+
+/**
+ * Actualiza un Order y reemplaza sus OrderItems por completo dentro de una transacción.
+ */
+export async function updateWithItems(
+  order: Order,
+  orderUpdates: Partial<OrderAttributes>,
+  newItemsData: OrderItemData[] | null,
+  externalTransaction?: Transaction,
+): Promise<Order> {
+  const execute = async (t: Transaction) => {
+    if (newItemsData !== null) {
+      // 1. Eliminar ítems anteriores
+      await OrderItem.destroy({ where: { orderId: order.id }, transaction: t });
+
+      // 2. Insertar nuevos ítems
+      await OrderItem.bulkCreate(
+        newItemsData.map((item) => ({
+          orderId: order.id,
+          dishId: item.dishId,
+          dishNameSnapshot: item.dishNameSnapshot,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal,
+        })),
+        { transaction: t },
+      );
+    }
+
+    // 3. Actualizar cabecera del pedido e incrementar versión
+    await order.update(
+      {
+        ...orderUpdates,
+        version: order.version + 1,
+      },
+      { transaction: t },
+    );
+
+    return order;
+  };
+
+  if (externalTransaction) {
+    return execute(externalTransaction);
+  }
+
+  return sequelize.transaction(execute);
+}
+
+/**
+ * Eliminación lógica (soft delete) del pedido.
+ */
+export async function softDelete(order: Order, externalTransaction?: Transaction): Promise<void> {
+  const execute = async (t: Transaction) => {
+    await order.destroy({ transaction: t });
+    await order.update({ version: order.version + 1 }, { transaction: t });
+  };
+
+  if (externalTransaction) {
+    await execute(externalTransaction);
+  } else {
+    await sequelize.transaction(execute);
+  }
 }
 
 /**

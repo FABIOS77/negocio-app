@@ -72,6 +72,8 @@ Todas las respuestas exitosas y de error siguen el contrato estandarizado:
 - `GET /orders?status=PENDING&date=YYYY-MM-DD&page=1&limit=20`: Listar pedidos.
 - `POST /orders`: Crear pedido idempotente -> `{ id?, customer_name, payment_method, items[] }`
 - `GET /orders/:id`: Detalle del pedido.
+- `PUT /orders/:id`: Edición completa del pedido (reemplaza lista de items y recalcula total).
+- `DELETE /orders/:id`: Soft-delete del pedido.
 - `PATCH /orders/:id/status`: Cambiar estado (`PENDING` -> `DELIVERED` | `CANCELLED`).
 
 ---
