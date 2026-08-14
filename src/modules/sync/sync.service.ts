@@ -229,7 +229,8 @@ async function processSingleOperation(
           if (op.operation === 'DELETE') {
             // IDEMPOTENT DELETE: La entidad no existe en el servidor.
             // El objetivo de DELETE ya está cumplido. Retornar PROCESSED.
-            const resultingData = { id: op.entity_id, deleted: true };
+            const nowIso = new Date().toISOString();
+            const resultingData = { id: op.entity_id, deleted: true, deleted_at: nowIso };
             const resultingVersion = (op.base_version ?? 1) + 1;
 
             const changeEntry = await syncRepo.recordChangeLog(
@@ -383,11 +384,16 @@ async function processSingleOperation(
             try {
               await ordersService.deleteOrder(op.entity_id);
               const deletedOrder = await Order.findByPk(op.entity_id, { paranoid: false, transaction: t });
-              resultingData = deletedOrder ? deletedOrder.toJSON() : { id: op.entity_id, deleted: true };
+              resultingData = {
+                ...(deletedOrder ? deletedOrder.toJSON() : {}),
+                id: op.entity_id,
+                deleted: true,
+                deleted_at: deletedOrder?.deletedAt?.toISOString() ?? new Date().toISOString(),
+              };
               resultingVersion = (deletedOrder?.version ?? (op.base_version ?? 1)) + 1;
             } catch (err) {
               if (err instanceof NotFoundError || (err as Error).name === 'NotFoundError') {
-                resultingData = { id: op.entity_id, deleted: true };
+                resultingData = { id: op.entity_id, deleted: true, deleted_at: new Date().toISOString() };
                 resultingVersion = (op.base_version ?? 1) + 1;
               } else {
                 throw err;
@@ -438,11 +444,16 @@ async function processSingleOperation(
             try {
               await expensesService.deleteExpense(op.entity_id);
               const deletedExp = await Expense.findByPk(op.entity_id, { paranoid: false, transaction: t });
-              resultingData = deletedExp ? deletedExp.toJSON() : { id: op.entity_id, deleted: true };
+              resultingData = {
+                ...(deletedExp ? deletedExp.toJSON() : {}),
+                id: op.entity_id,
+                deleted: true,
+                deleted_at: deletedExp?.deletedAt?.toISOString() ?? new Date().toISOString(),
+              };
               resultingVersion = (deletedExp?.version ?? (op.base_version ?? 1)) + 1;
             } catch (err) {
               if (err instanceof NotFoundError || (err as Error).name === 'NotFoundError') {
-                resultingData = { id: op.entity_id, deleted: true };
+                resultingData = { id: op.entity_id, deleted: true, deleted_at: new Date().toISOString() };
                 resultingVersion = (op.base_version ?? 1) + 1;
               } else {
                 throw err;
@@ -494,10 +505,14 @@ async function processSingleOperation(
             if (dish) {
               await dish.destroy({ transaction: t });
               await dish.update({ version: dish.version + 1 }, { transaction: t });
-              resultingData = dish.toJSON();
+              resultingData = {
+                ...dish.toJSON(),
+                deleted: true,
+                deleted_at: dish.deletedAt?.toISOString() ?? new Date().toISOString(),
+              };
               resultingVersion = dish.version;
             } else {
-              resultingData = { id: op.entity_id, deleted: true };
+              resultingData = { id: op.entity_id, deleted: true, deleted_at: new Date().toISOString() };
               resultingVersion = (op.base_version ?? 1) + 1;
             }
           }
@@ -541,10 +556,10 @@ async function processSingleOperation(
             if (menu) {
               await DailyMenuDish.destroy({ where: { dailyMenuId: menu.id }, transaction: t });
               await menu.destroy({ transaction: t });
-              resultingData = { id: op.entity_id, deleted: true };
+              resultingData = { id: op.entity_id, deleted: true, deleted_at: new Date().toISOString() };
               resultingVersion = menu.version + 1;
             } else {
-              resultingData = { id: op.entity_id, deleted: true };
+              resultingData = { id: op.entity_id, deleted: true, deleted_at: new Date().toISOString() };
               resultingVersion = (op.base_version ?? 1) + 1;
             }
           }
@@ -593,13 +608,14 @@ async function processSingleOperation(
               const expCount = await Expense.count({ where: { categoryId: cat.id }, paranoid: false, transaction: t });
               if (expCount > 0) {
                 await cat.update({ active: false, version: cat.version + 1 }, { transaction: t });
+                resultingData = { ...cat.toJSON(), active: false, deleted: true, deleted_at: new Date().toISOString() };
               } else {
                 await cat.destroy({ transaction: t });
+                resultingData = { ...cat.toJSON(), deleted: true, deleted_at: new Date().toISOString() };
               }
-              resultingData = cat.toJSON();
               resultingVersion = cat.version;
             } else {
-              resultingData = { id: op.entity_id, deleted: true };
+              resultingData = { id: op.entity_id, deleted: true, deleted_at: new Date().toISOString() };
               resultingVersion = (op.base_version ?? 1) + 1;
             }
           }
