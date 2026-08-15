@@ -127,7 +127,8 @@ async function generateOrderNumber(orderedAt: Date, transaction: Transaction): P
   const { start, end } = dateRangeUTC(dateStr);
   const count = await ordersRepo.countOrdersForDay(start, end, transaction);
   const seq = String(count + 1).padStart(4, '0');
-  return `${dateStr.replace(/-/g, '')}-${seq}`;
+  const randomSuffix = Math.floor(100 + Math.random() * 900);
+  return `${dateStr.replace(/-/g, '')}-${seq}-${randomSuffix}`;
 }
 
 // ─── Service ──────────────────────────────────────────────────────────────────

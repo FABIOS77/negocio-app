@@ -93,6 +93,10 @@ function sanitizeOrderPayload(payload: Record<string, unknown>): Record<string, 
   const status = payload.status;
   if (status !== undefined) sanitized.status = status;
 
+  // Descartar order_number / orderNumber enviado por el cliente para forzar la generación segura en el backend
+  delete sanitized.order_number;
+  delete sanitized.orderNumber;
+
   return sanitized;
 }
 
