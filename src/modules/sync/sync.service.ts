@@ -668,7 +668,24 @@ async function processSingleOperation(
 
     return result;
   } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : 'Processing error';
+    let errorMsg = err instanceof Error ? err.message : 'Processing error';
+
+    // Extracción detallada para errores de validación o restricción de Sequelize o Zod
+    const maybeSeqError = err as { errors?: Array<{ path?: string; message: string }> } | null;
+    const maybeZodError = err as { issues?: Array<{ path?: Array<string | number>; message: string }> } | null;
+
+    if (maybeSeqError?.errors && Array.isArray(maybeSeqError.errors) && maybeSeqError.errors.length > 0) {
+      const seqErrors = maybeSeqError.errors
+        .map((e) => (e.path ? `${e.path}: ${e.message}` : e.message))
+        .join(' | ');
+      errorMsg = `Validation error: ${seqErrors}`;
+    } else if (maybeZodError?.issues && Array.isArray(maybeZodError.issues) && maybeZodError.issues.length > 0) {
+      const zodErrors = maybeZodError.issues
+        .map((i) => `${i.path && i.path.length > 0 ? i.path.join('.') : ''}: ${i.message}`)
+        .join(' | ');
+      errorMsg = `Validation error: ${zodErrors}`;
+    }
+
     await syncRepo.recordSyncOperation({
       operationId: op.operation_id,
       entityType: op.entity_type,

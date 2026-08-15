@@ -333,6 +333,39 @@ describe('POST /api/v1/sync/push', () => {
     expect(expensesService.createExpense).toHaveBeenCalled();
   });
 
+  it('should expose detailed field error messages when SequelizeValidationError occurs', async () => {
+    const seqErr = Object.assign(new Error('Validation error'), {
+      name: 'SequelizeValidationError',
+      errors: [
+        { path: 'customer_name', message: 'customer_name cannot be empty' },
+        { path: 'payment_method', message: 'payment_method is invalid' },
+      ],
+    });
+    vi.mocked(ordersService.createOrder).mockRejectedValue(seqErr);
+
+    const res = await request(app)
+      .post('/api/v1/sync/push')
+      .set(AUTH_HEADER)
+      .send({
+        operations: [
+          {
+            operation_id: OP_UUID_1,
+            entity_type: 'order',
+            entity_id: ENTITY_UUID_1,
+            operation: 'CREATE',
+            payload: {},
+            client_timestamp: '2026-08-14T12:00:00.000Z',
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.failed).toBe(1);
+    expect(res.body.data.results[0].status).toBe('FAILED');
+    expect(res.body.data.results[0].error_message).toContain('customer_name: customer_name cannot be empty');
+    expect(res.body.data.results[0].error_message).toContain('payment_method: payment_method is invalid');
+  });
+
   it('should return 401 without authorization token', async () => {
     const res = await request(app).post('/api/v1/sync/push').send({ operations: [] });
     expect(res.status).toBe(401);
